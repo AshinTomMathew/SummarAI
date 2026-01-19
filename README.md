@@ -1,81 +1,80 @@
-# MeetingAI: Smart Adaptive Meeting & Video Note Generator
+# SummarAI: Smart Meeting & Video Intelligence Assistant 🧠✨
 
-MeetingAI is a premium desktop application designed to turn long meetings and videos into actionable intelligence. It uses generative AI to provide content-adaptive summaries, speaker-diarized transcripts, and visual extraction of key frames and diagrams.
-
-## ✨ Core Functionalities
-
-1.  **Multi-Source Meeting & Video Input**:
-    *   **YouTube Support**: Import directly via URL (requires `yt-dlp`).
-    *   **Direct Upload**: Support for MP4, MOV, MP3, and other common media formats.
-    *   **Hybrid Recording System**: Capture live audio from your microphone for real-time analysis.
-
-2.  **Smart Adaptive Summaries (Module 4)**:
-    *   Adaptive templates for **Educational, Business, Team Meeting, Podcast, and Interview** content.
-    *   Intelligent extraction of key points, action items, and technical concepts.
-
-3.  **Speaker-Labeled Transcription (Module 2)**:
-    *   Powered by Gemini 1.5 Flash for high accuracy.
-    *   Identifies different speakers (Speaker A, Speaker B) for clear context.
-
-4.  **Visual Extraction & OCR (Module 5)**:
-    *   Extracts key frames from video recordings.
-    *   Runs OCR (Optical Character Recognition) to capture text from slides and diagrams.
-
-5.  **Intelligent Chatbot (Module 6)**:
-    *   Discuss your meetings with an AI that "remembers" the entire transcript and visuals.
-    *   Ask questions, clarify points, or request specific information from the meeting context.
-
-6.  **Multi-Format Export (Module 7)**:
-    *   Generate professional reports in **PDF, DOCX, or TXT** formats.
-    *   Reports include Title, Summary, and Full Transcript.
+**SummarAI** is a premium AI-powered desktop application designed to transform long meetings, lectures, and videos into organized, actionable intelligence. Developed for high-performance content analysis, it leverages state-of-the-art AI to handle everything from transcription to visual extraction.
 
 ---
 
-## 🛠️ Technical Stack
+## 🚀 Key Features
 
-*   **Frontend**: React, Tailwind CSS, Material Symbols.
-*   **Backend (Desktop)**: Electron (Node.js).
-*   **AI Engine**: Google Gemini 1.5 Flash API.
-*   **Database**: MySQL (for persistence) + Local Guest Mode.
-*   **Media Processing**: FFmpeg, node-fetch, Tesseract.js.
+### 1. Multi-Input Intelligent Import
+*   **YouTube/Link Import**: Feed any public URL directly into the app (powered by `yt-dlp`).
+*   **Local Media Support**: Seamlessly upload MP4, MOV, MP3, and other media formats.
+*   **Live Recording**: High-fidelity microphone capture for real-time meeting transcription.
+
+### 2. Adaptive AI Intelligence (Pro-Level)
+*   **Content-Aware Analysis**: Automatically classifies recordings into **Educational, Business, Team Meeting, Podcast, or Interview**.
+*   **Advanced AI Transformations**: One-click reformatting of summaries into:
+    *   **Points**: Structured, decision-oriented bullet points.
+    *   **Mindmap**: Educational study guides with text-based mindmaps, flashcards, and keynotes.
+    *   **Speaker Breakdown**: Detailed attribution of "who said what".
+*   **Unified AI Engine**: Powered by **Groq (Llama-3.3-70b)** for lightning-fast analysis.
+
+### 3. Integrated Media & Visuals
+*   **In-Page Media Player**: Watch uploaded videos or listen to audio directly within the Analysis Result page.
+*   **Visual Extraction & OCR**: Extracts key frames and runs OCR (Optical Character Recognition) to capture text from slides and whiteboard diagrams.
+*   **Full-Screen Focus**: Expandable views for summary and transcript for deep reading.
+
+### 4. Interactive Knowledge Chat
+*   Discuss your meetings with an AI that understands the full context of what was said and shown.
+*   Ask questions, clarify complex terms, or generate new ideas based on the session.
+
+### 5. Professional Export
+*   Generate polished reports in **PDF, DOCX (Word), or TXT** formats.
+*   Automated temporary storage management keeps your system clean.
 
 ---
 
-## 🚀 Setup Instructions
+## 🛠️ Technology Stack
+*   **Frontend**: React.js, Vanilla CSS, Material Symbols.
+*   **Backend (Desktop)**: Electron.js (Node.js).
+*   **AI Backend**: FastAPI (Python), Groq Cloud API (Whisper v3 & Llama 3.3).
+*   **Database**: MySQL & SQLite for persistent meeting history.
+*   **Media Processing**: FFmpeg, PyInstaller, yt-dlp.
 
-### 1. Database Setup
-Ensure MySQL is running on your system.
-*   Run the included `setup_db.ps1` in PowerShell to automatically create the `meetingai` database and all necessary tables.
-*   Alternatively, run the `database_schema.sql` script directly in your MySQL workbench.
+---
 
-### 2. Environment Variables
-Create a `.env` file in the root directory with the following keys:
+## � Setup & Installation
+
+### 1. Prerequisites
+*   Python 3.10+
+*   Node.js & npm
+*   MySQL Server (Running locally)
+*   FFmpeg installed on system PATH
+
+### 2. Configuration
+Create a `.env` file in the root directory:
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_key_here
 DB_HOST=localhost
 DB_USER=root
-DB_PASSWORD=your_mysql_password_here
-DB_NAME=meetingai
-GOOGLE_CLIENT_ID=optional_for_google_login
-GOOGLE_CLIENT_SECRET=optional_for_google_login
+DB_PASSWORD=your_password
+DB_NAME=summarai
 ```
 
-### 3. Dependencies
-*   Install **yt-dlp** and **ffmpeg** on your system path for YouTube import support.
-*   Run `npm install` to install project dependencies.
-
-### 4. Running the App
-*   **Development**: `npm run electron:dev`
-*   **Build Executable**: `npm run electron:build` (Outputs to `release/` folder).
+### 3. Quick Start
+1.  **Install Frontend Deps**: `npm install`
+2.  **Install Backend Deps**: `pip install -r backend/requirements.txt`
+3.  **Run Application**: `npm run dev`
 
 ---
 
-## 👤 User Modes
-
-*   **Temporary (Guest) Mode**: Complete access to AI features. Data is processed locally and discarded when the app is closed. Perfect for privacy-conscious users.
-*   **Logged-in User Mode**: Securely stores your meetings, transcripts, and summaries in the MySQL database linked to your account.
+## � Project Structure
+*   `/src`: React components and page layouts (UI).
+*   `/electron`: Main process logic and secure IPC bridging.
+*   `/backend`: FastAPI server, AI services (Analysis, Transcription, Visuals).
+*   `/.env`: Security configuration (ignored by Git).
 
 ---
 
-Developed for **Advanced Agentic Coding** submission.
-MeetingAI - Turning conversations into conclusions.
+Developed as a Final Year MCA Project.  
+**Turn conversations into conclusions with SummarAI.**

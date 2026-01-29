@@ -55,7 +55,7 @@ export default function Sidebar({ active }) {
                     </Link>
                     <Link to="/dashboard" className={getLinkClass('/dashboard')}>
                         <span className={getIconClass('/dashboard')}>history</span>
-                        <span className="text-sm font-medium hidden lg:block">{userName === 'Guest' ? 'Meeting History' : 'Meeting History'}</span>
+                        <span className="text-sm font-medium hidden lg:block">Meeting History</span>
                     </Link>
                     <Link to="/chat" className={getLinkClass('/chat')}>
                         <span className={getIconClass('/chat')}>chat</span>

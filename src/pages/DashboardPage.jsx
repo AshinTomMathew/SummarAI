@@ -10,6 +10,7 @@ export default function DashboardPage() {
     const [userName, setUserName] = useState('Guest');
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('newest');
+    const [isSortOpen, setIsSortOpen] = useState(false);
 
     const getInitials = (name) => {
         if (!name || name === 'Guest') return 'G';
@@ -21,20 +22,27 @@ export default function DashboardPage() {
             if (window.electronAPI) {
                 const userId = await window.electronAPI.getActiveId();
 
-                // Always fetch sessions (handles both registered and guest)
-                const result = await window.electronAPI.getSessions(userId);
-                if (result.success) {
-                    setSessions(result.sessions);
-                }
-
                 if (userId) {
+                    // Registered user: Fetch from database
+                    const result = await window.electronAPI.getSessions(userId);
+                    if (result.success) {
+                        setSessions(result.sessions);
+                    }
                     const userResult = await window.electronAPI.getUser(userId);
                     if (userResult.success) {
                         setUserName(userResult.user.name);
                     }
                 } else {
-                    console.log('Running in Guest Mode');
+                    // Guest user: Fetch from localStorage
+                    console.log('Running in Guest Mode - fetching from localStorage');
                     setUserName('Guest');
+                    try {
+                        const localSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
+                        setSessions(localSessions);
+                    } catch (e) {
+                        console.error('Failed to parse guest sessions:', e);
+                        setSessions([]);
+                    }
                 }
             }
             setLoading(false);
@@ -98,7 +106,6 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="flex flex-col gap-2 rounded-2xl p-6 bg-surface-dark border border-white/5 hover:border-primary/30 transition-colors group">
                             <div className="flex items-center justify-between">
@@ -140,90 +147,119 @@ export default function DashboardPage() {
                             <h3 className="text-white text-xl font-bold">Recent Sessions</h3>
 
                             <div className="flex flex-wrap items-center gap-3">
-                                {/* Search Bar */}
-                                <div className="relative flex-1 min-w-[240px]">
-                                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-[20px]">search</span>
-                                    <input
-                                        type="text"
-                                        placeholder="Search by title or category..."
-                                        className="w-full bg-surface-dark border border-white/5 rounded-full pl-10 pr-4 py-2 text-white text-sm focus:border-primary/50 outline-none transition-all"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
+                                {/* Search Bar (Liquid Glass Style) */}
+                                <div className="relative flex-1 min-w-[240px] group">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-blue-500/20 rounded-full blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                    <div className="relative flex items-center bg-white/5 backdrop-blur-md border border-white/10 rounded-full h-10 transition-all focus-within:bg-white/10 focus-within:border-primary/30 focus-within:shadow-[0_0_15px_rgba(70,236,19,0.2)]">
+                                        <span className="material-symbols-outlined absolute left-3 text-white/40 text-[20px]">search</span>
+                                        <input
+                                            type="text"
+                                            placeholder="Search by title or category..."
+                                            className="w-full bg-transparent border-none outline-none pl-10 pr-4 text-white text-sm placeholder-white/30"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                        />
+                                    </div>
                                 </div>
 
-                                {/* Sort Options */}
-                                <div className="flex items-center gap-2 bg-surface-dark border border-white/5 rounded-full px-4 py-2 text-white/70">
-                                    <span className="material-symbols-outlined text-[18px]">sort</span>
-                                    <select
-                                        className="bg-transparent text-white text-sm outline-none cursor-pointer border-none"
-                                        value={sortBy}
-                                        onChange={(e) => setSortBy(e.target.value)}
+                                {/* Sort Options (Custom Liquid Glass Dropdown) */}
+                                <div className="relative z-50">
+                                    <button
+                                        onClick={() => setIsSortOpen(!isSortOpen)}
+                                        onBlur={() => setTimeout(() => setIsSortOpen(false), 200)}
+                                        className="relative group flex items-center justify-between gap-3 bg-white/5 hover:bg-white/10 backdrop-blur-md border border-white/10 rounded-full px-5 py-2 transition-all hover:border-primary/30 hover:shadow-[0_0_15px_rgba(70,236,19,0.1)] min-w-[160px]"
                                     >
-                                        <option value="newest" className="bg-surface-dark">Newest First</option>
-                                        <option value="oldest" className="bg-surface-dark">Oldest First</option>
-                                        <option value="az" className="bg-surface-dark">Title A-Z</option>
-                                    </select>
+                                        <div className="flex items-center gap-2 text-white/80 group-hover:text-white transition-colors">
+                                            <span className="material-symbols-outlined text-[18px]">sort</span>
+                                            <span className="text-sm font-medium">
+                                                {sortBy === 'newest' && 'Newest First'}
+                                                {sortBy === 'oldest' && 'Oldest First'}
+                                                {sortBy === 'az' && 'Title A-Z'}
+                                            </span>
+                                        </div>
+                                        <span className={`material-symbols-outlined text-[16px] text-white/50 transition-transform duration-300 ${isSortOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                                    </button>
+
+                                    {/* Dropdown Menu */}
+                                    <div className={`absolute top-full right-0 mt-2 w-full min-w-[180px] bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-1 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] flex flex-col gap-1 transition-all duration-200 origin-top-right ${isSortOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'}`}>
+                                        {[
+                                            { label: 'Newest First', value: 'newest', icon: 'history' },
+                                            { label: 'Oldest First', value: 'oldest', icon: 'update' },
+                                            { label: 'Title A-Z', value: 'az', icon: 'abc' }
+                                        ].map((option) => (
+                                            <button
+                                                key={option.value}
+                                                onClick={() => {
+                                                    setSortBy(option.value);
+                                                    setIsSortOpen(false);
+                                                }}
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${sortBy === option.value ? 'bg-primary/20 text-primary' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]">{option.icon}</span>
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                        {loading ? (
-                            <p className="text-white/50">Loading sessions...</p>
-                        ) : filteredSessions.length === 0 ? (
-                            <div className="bg-surface-dark rounded-xl p-8 text-center border border-white/5">
-                                <p className="text-white/50 mb-4">
-                                    {searchQuery ? 'No meetings match your search query.' : 'No sessions found. Start a new analysis to see results here!'}
-                                </p>
-                                {!searchQuery && (
-                                    <Link to="/new-session" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-6 py-2 rounded-full text-white font-medium transition-colors">
-                                        Start Analysis
-                                    </Link>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                {filteredSessions.map(session => {
-                                    // Sanitize title for display
-                                    const displayTitle = session.title ? session.title.replace(/^(compressed_|vid_\d+_)+/g, '') : 'Untitled Meeting';
-
-                                    return (
-                                        <Link key={session.id} to="/transcript" state={session} className="group flex flex-col sm:flex-row gap-4 rounded-2xl bg-surface-dark p-4 border border-white/5 hover:border-primary/20 transition-all shadow-sm">
-                                            <div className="w-full sm:w-32 aspect-video sm:aspect-square rounded-xl bg-cover bg-center shrink-0 relative overflow-hidden bg-white/5 flex items-center justify-center">
-                                                {session.visuals && session.visuals.length > 0 ? (
-                                                    <img
-                                                        src={`media://${session.visuals[0].path}`}
-                                                        className="w-full h-full object-cover"
-                                                        alt="Meeting Preview"
-                                                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                                    />
-                                                ) : null}
-                                                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                                                    <span className="material-symbols-outlined text-white/50 text-[32px]">
-                                                        {session.source_type === 'link' ? 'link' : (session.source_type === 'recording' ? 'mic' : 'upload_file')}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col justify-between flex-1 py-0.5">
-                                                <div>
-                                                    <div className="flex justify-between items-start mb-1 gap-2">
-                                                        <h4 className="text-white text-base font-bold leading-tight line-clamp-1 group-hover:text-primary transition-colors">{displayTitle}</h4>
-                                                        <div className="bg-primary/10 text-primary text-[9px] uppercase font-bold px-2 py-0.5 rounded-full shrink-0 border border-primary/20">{session.classification || 'General'}</div>
-                                                    </div>
-                                                    <p className="text-white/40 text-xs mb-3">{new Date(session.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex-1 rounded-full h-8 flex items-center justify-center bg-white/5 group-hover:bg-primary group-hover:text-background-dark text-white text-xs font-bold transition-all border border-white/5">
-                                                        View Analysis Details
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        )}
                     </div>
+
+                    {loading ? (
+                        <p className="text-white/50">Loading sessions...</p>
+                    ) : filteredSessions.length === 0 ? (
+                        <div className="bg-surface-dark rounded-xl p-8 text-center border border-white/5">
+                            <p className="text-white/50 mb-4">
+                                {searchQuery ? 'No meetings match your search query.' : 'No sessions found. Start a new analysis to see results here!'}
+                            </p>
+                            {!searchQuery && (
+                                <Link to="/new-session" className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-6 py-2 rounded-full text-white font-medium transition-colors">
+                                    Start Analysis
+                                </Link>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {filteredSessions.map(session => {
+                                // Sanitize title for display
+                                const displayTitle = session.title ? session.title.replace(/^(compressed_|vid_\d+_)+/g, '') : 'Untitled Meeting';
+
+                                return (
+                                    <Link key={session.id} to="/transcript" state={session} className="group flex flex-col sm:flex-row gap-4 rounded-2xl bg-surface-dark p-4 border border-white/5 hover:border-primary/20 transition-all shadow-sm">
+                                        <div className="w-full sm:w-32 aspect-video sm:aspect-square rounded-xl bg-cover bg-center shrink-0 relative overflow-hidden bg-white/5 flex items-center justify-center">
+                                            {session.visuals && session.visuals.length > 0 ? (
+                                                <img
+                                                    src={`media://${session.visuals[0].path}`}
+                                                    className="w-full h-full object-cover"
+                                                    alt="Meeting Preview"
+                                                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                />
+                                            ) : null}
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                                <span className="material-symbols-outlined text-white/50 text-[32px]">
+                                                    {session.source_type === 'link' ? 'link' : (session.source_type === 'recording' ? 'mic' : 'upload_file')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col justify-between flex-1 py-0.5">
+                                            <div>
+                                                <div className="flex justify-between items-start mb-1 gap-2">
+                                                    <h4 className="text-white text-base font-bold leading-tight line-clamp-1 group-hover:text-primary transition-colors">{displayTitle}</h4>
+                                                    <div className="bg-primary/10 text-primary text-[9px] uppercase font-bold px-2 py-0.5 rounded-full shrink-0 border border-primary/20">{session.classification || 'General'}</div>
+                                                </div>
+                                                <p className="text-white/40 text-xs mb-3">{new Date(session.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex-1 rounded-full h-8 flex items-center justify-center bg-white/5 group-hover:bg-primary group-hover:text-background-dark text-white text-xs font-bold transition-all border border-white/5">
+                                                    View Analysis Details
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </main>
         </div>

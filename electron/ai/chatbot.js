@@ -15,7 +15,7 @@ export async function chatQuery(userQuery, userId, sessionId, providedTranscript
         context = `Here is the meeting transcript context:\n${providedTranscript}\n\n`;
     } else if (sessionId) {
         try {
-            const sessions = await query('SELECT transcript, visuals FROM sessions WHERE id = ?', [sessionId]);
+            const sessions = await query('SELECT `transcript`, `visuals` FROM `sessions` WHERE `id` = ?', [sessionId]);
             if (sessions.length > 0) {
                 const session = sessions[0];
                 context = `Here is the meeting transcript context:\n${session.transcript}\n\n`;
@@ -42,7 +42,7 @@ export async function chatQuery(userQuery, userId, sessionId, providedTranscript
     if (userId && sessionId) {
         try {
             const history = await query(
-                'SELECT urole, umessage FROM chat_history WHERE user_id = ? AND session_id = ? ORDER BY created_at DESC LIMIT 10',
+                'SELECT `urole`, `umessage` FROM `chat_history` WHERE `user_id` = ? AND `session_id` = ? ORDER BY `created_at` DESC LIMIT 10',
                 [userId, sessionId]
             );
             // Reverse to get chronological order
@@ -59,7 +59,7 @@ export async function chatQuery(userQuery, userId, sessionId, providedTranscript
     if (userId && sessionId) {
         try {
             await query(
-                'INSERT INTO chat_history (user_id, session_id, urole, umessage) VALUES (?, ?, ?, ?)',
+                'INSERT INTO `chat_history` (`user_id`, `session_id`, `urole`, `umessage`) VALUES (?, ?, ?, ?)',
                 [userId, sessionId, 'user', userQuery]
             );
         } catch (dbError) {
@@ -97,7 +97,7 @@ export async function chatQuery(userQuery, userId, sessionId, providedTranscript
         if (userId && sessionId) {
             try {
                 await query(
-                    'INSERT INTO chat_history (user_id, session_id, urole, umessage) VALUES (?, ?, ?, ?)',
+                    'INSERT INTO `chat_history` (`user_id`, `session_id`, `urole`, `umessage`) VALUES (?, ?, ?, ?)',
                     [userId, sessionId, 'assistant', response]
                 );
             } catch (dbError) {

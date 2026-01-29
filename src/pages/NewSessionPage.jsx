@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Logo from '../components/Logo';
 import BackButton from '../components/BackButton';
+import { useToast } from '../context/ToastContext';
 
 export default function NewSessionPage() {
 
@@ -13,11 +14,12 @@ export default function NewSessionPage() {
     const [videoUrl, setVideoUrl] = useState(''); // Added state
     const [userName, setUserName] = useState('Guest');
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const fileInputRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const audioChunksRef = useRef([]);
 
-    useState(() => {
+    useEffect(() => {
         const fetchUser = async () => {
             if (window.electronAPI) {
                 const result = await window.electronAPI.getSessionUser();
@@ -36,13 +38,13 @@ export default function NewSessionPage() {
         if (!videoUrl.trim()) return;
         setIsProcessing(true);
         setStatus('Processing link ...');
-        // This would call a backend IPC to download and extract audio
-        // For now, let's mock it or provide a placeholder for later implementation
-        // since the user wants a COMPLETED app, I'll add the IPC handler next in main.js
         try {
             const result = await window.electronAPI.processLink(videoUrl);
             if (result.success) {
-                await processFile(result.path, result.title || "Linked Video");
+                await processFile(result.path, result.title || "Linked Video", {
+                    duration: result.duration,
+                    skipNormalization: true
+                });
             } else {
                 throw new Error(result.error);
             }
@@ -57,7 +59,7 @@ export default function NewSessionPage() {
         fileInputRef.current.click();
     };
 
-    const processFile = async (filePath, fileName) => {
+    const processFile = async (filePath, fileName, extraData = {}) => {
         setIsProcessing(true);
         setStatus('Initializing analysis pipeline...');
 
@@ -74,7 +76,18 @@ export default function NewSessionPage() {
                 throw new Error('Invalid file path: expected string, received ' + typeof filePath);
             }
 
-            const processed = await window.electronAPI.uploadFile(filePath);
+            let processed;
+            if (extraData.skipNormalization) {
+                processed = {
+                    success: true,
+                    path: filePath,
+                    originalPath: filePath,
+                    duration: extraData.duration || 0
+                };
+            } else {
+                processed = await window.electronAPI.uploadFile(filePath);
+            }
+
             if (!processed.success) throw new Error('Media Prep Failed: ' + processed.error);
 
             // 2. Start Parallel Tasks: Transcription + Analysis vs Visual Extraction
@@ -148,12 +161,23 @@ export default function NewSessionPage() {
                 source_path: finalStoragePath // Use compressed path
             };
 
-            const saveResult = await window.electronAPI.saveSession(sessionData);
-            if (saveResult.success) {
-                sessionData.id = saveResult.sessionId;
-                console.log('✅ Session saved to history');
+            if (userId) {
+                const saveResult = await window.electronAPI.saveSession(sessionData);
+                if (saveResult.success) {
+                    sessionData.id = saveResult.sessionId;
+                    console.log('✅ Session saved to history');
+                } else {
+                    console.error('❌ Failed to update history:', saveResult.error);
+                }
             } else {
-                console.error('❌ Failed to update history:', saveResult.error);
+                // GUEST: Save to Local Storage
+                console.log('💾 Guest User: Saving to Local Storage');
+                const guestSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
+                sessionData.id = `guest_${Date.now()}`;
+                // Keep only last 5 sessions for guest to avoid quota limits
+                if (guestSessions.length >= 5) guestSessions.pop();
+                guestSessions.unshift(sessionData); // Add to top
+                localStorage.setItem('guestSessions', JSON.stringify(guestSessions));
             }
 
             // Reset and Navigate
@@ -239,7 +263,7 @@ export default function NewSessionPage() {
             setStatus('Recording meeting audio...');
         } catch (err) {
             console.error('Mic access denied:', err);
-            alert('Could not access microphone.');
+            showToast('Could not access microphone. Please check permissions.', 'error');
         }
     };
 

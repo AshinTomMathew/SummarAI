@@ -14,3 +14,5 @@ python-multipart
 yt-dlp
 numpy
 pillow
+opencv-python
+groq

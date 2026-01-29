@@ -132,13 +132,17 @@ Podcast:
 - Highlight discussions and viewpoints
 
 General:
-- Provide a concise high-level summary
+- Provide an exhaustive deep-dive summary covering every minor and major point with technical detail
 
 Rules:
-- Be clear and structured
+- Be extremely thorough, exhaustive, and highly detailed
+- Provide a deep-dive analysis across multiple paragraphs
+- Use CLEAR CAPS HEADERS (e.g., SECTION TITLE) to organize different themes instead of symbols.
+- DO NOT use markdown symbols like '#' or '*' in the output.
 - Do not hallucinate information
+- Give an intensive, granular explanation of every topic discussed
 - Do not mention the template
-- Keep the summary concise
+- Ensure the summary is comprehensive, highly professional, and covers all relevant context in depth.
 
 --------------------------------------------------
 OUTPUT FORMAT (STRICT)
@@ -157,7 +161,7 @@ Return ONLY valid JSON in the following structure:
                     {"role": "user", "content": f"TRANSCRIPT:\n\"\"\"\n{chunk}\n\"\"\""}
                 ],
                 model="llama-3.3-70b-versatile",
-                temperature=0.1, # Lower temperature for stricter format adherence
+                temperature=0.5, # Slightly higher for more descriptive output
                 response_format={"type": "json_object"} # Ensure JSON output
             )
             
@@ -214,10 +218,11 @@ def summarize(text: str, category: str) -> str:
             {template_rules}
             
             Rules:
-            - Be clear and structured
+            - Be thorough, detailed, and structured
             - Do not hallucinate information
+            - Give a deep explanation of the content
             - Do not mention the template
-            - Keep the summary concise
+            - Ensure the summary is comprehensive and lengthy
             
             TRANSCRIPT:
             {chunk}
@@ -229,7 +234,7 @@ def summarize(text: str, category: str) -> str:
                     {"role": "user", "content": prompt}
                 ],
                 model="llama-3.3-70b-versatile",
-                temperature=0.3,
+                temperature=0.5,
             )
             return chat_completion.choices[0].message.content
         except Exception as e:

@@ -1,4 +1,9 @@
 import { app, BrowserWindow, ipcMain, protocol, shell } from 'electron';
+
+// Register privileged schemes strictly before app.whenReady()
+protocol.registerSchemesAsPrivileged([
+    { scheme: 'media', privileges: { secure: true, standard: true, stream: true, bypassCSP: false, supportFetchAPI: true } }
+]);
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,13 +17,12 @@ import { transcribeAudio } from './ai/transcriber.js';
 import { extractVisuals } from './ai/visuals.js';
 import { chatQuery } from './ai/chatbot.js';
 import { processAudio, extractAudioFromVideo, getDuration } from './ai/recorder.js';
-import { processUrl } from './ai/urlProcessor.js'; // Added
 import fs from 'fs';
 
 // Define __dirname and __filename for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PYTHON_API_BASE = 'http://127.0.0.1:8000';
+const PYTHON_API_BASE = 'http://127.250.0.0:2611';
 
 console.log('🔵 main.js: Starting Electron...');
 
@@ -59,10 +63,36 @@ process.on('uncaughtException', (error) => {
     console.error('❌ Uncaught Exception:', error);
 });
 
+// IPC Handler for Chat History
+ipcMain.handle('db-get-chat-history', async (event, { sessionId, userId }) => {
+    try {
+        if (!sessionId || !userId) return { success: true, history: [] };
+        console.log(`📜 Fetching chat history for session ${sessionId} (User ${userId})`);
+
+        const history = await dbQuery(
+            'SELECT `urole` as sender, `umessage` as text, `created_at` FROM `chat_history` WHERE `session_id` = ? AND `user_id` = ? ORDER BY `created_at` ASC',
+            [sessionId, userId]
+        );
+
+        return {
+            success: true,
+            history: history.map(h => ({
+                sender: h.sender === 'assistant' ? 'ai' : h.sender,
+                text: h.text,
+                timestamp: h.created_at
+            }))
+        };
+    } catch (error) {
+        console.error('❌ Failed to fetch chat history:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 let mainWindow;
 let activeUserId = null; // Track currently logged in user
 let pyProcess = null; // Track backend process globaly
 let isBackendReady = false; // Flag to track backend health
+let isSpawning = false; // Flag to prevent multiple spawn attempts
 
 async function checkBackendHealth(retries = 60, interval = 1000) {
     const healthUrl = `${PYTHON_API_BASE}/health`;
@@ -91,20 +121,25 @@ async function checkBackendHealth(retries = 60, interval = 1000) {
 }
 
 // Helper to spawn Python Backend
-let isSpawning = false;
+let backendSpawned = false; // Strict guard to prevent double-spawn
+
 async function spawnPythonBackend() {
-    if (pyProcess || isSpawning) {
-        console.log('🔵 Python Backend is already running or spawning.');
+    if (backendSpawned) {
+        console.log('🛑 Backend spawn already triggered. Skipping.');
+        return;
+    }
+    backendSpawned = true; // Mark as spawned immediately
+
+    if (pyProcess) {
+        console.log('🔵 Python Backend is already running (process exists).');
         return;
     }
 
-    isSpawning = true;
     console.log('🔍 Checking for existing backend on port 8000...');
-    const isAlreadyRunning = await checkBackendHealth(3, 500); // Quick check
+    const isAlreadyRunning = await checkBackendHealth(1, 500); // Quick check (1 retry)
     if (isAlreadyRunning) {
-        console.log('✅ Found existing backend. Reusing it.');
+        console.log('✅ Found existing backend (likely manual start). Reusing it.');
         isBackendReady = true;
-        isSpawning = false;
         return;
     }
 
@@ -124,6 +159,7 @@ async function spawnPythonBackend() {
 
     if (app.isPackaged ? fs.existsSync(pyPath) : true) {
         console.log('🚀 Spawning Python Backend:', pyPath, args.join(' '));
+        isSpawning = true;
 
         const env = { ...process.env };
         const rootPath = path.join(__dirname, '..');
@@ -147,6 +183,7 @@ async function spawnPythonBackend() {
         pyProcess.on('error', (err) => {
             console.error('❌ Failed to start Python Backend:', err);
             isSpawning = false;
+            backendSpawned = false; // Allow retry
         });
 
         pyProcess.on('exit', (code) => {
@@ -154,6 +191,7 @@ async function spawnPythonBackend() {
             pyProcess = null;
             isBackendReady = false;
             isSpawning = false;
+            backendSpawned = false; // Allow respawn if needed
         });
 
         pyProcess.unref();
@@ -168,6 +206,7 @@ async function spawnPythonBackend() {
     } else {
         console.error('❌ Python Backend not found at:', pyPath);
         isSpawning = false;
+        backendSpawned = false; // Allow retry
     }
 }
 
@@ -193,7 +232,12 @@ async function createWindow() {
             responseHeaders: {
                 ...details.responseHeaders,
                 'Content-Security-Policy': [
-                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://lh3.googleusercontent.com https://www.gstatic.com https://generativelanguage.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com;"
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' media: data: blob: https://lh3.googleusercontent.com https://www.gstatic.com https://generativelanguage.googleapis.com; " +
+                    "img-src 'self' media: data: blob: https://lh3.googleusercontent.com https://www.gstatic.com; " +
+                    "media-src 'self' media: data: blob:; " +
+                    "connect-src 'self' http://127.250.0.0:9494; " +
+                    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+                    "font-src 'self' data: https://fonts.gstatic.com;"
                 ]
             }
         });
@@ -246,12 +290,16 @@ async function createWindow() {
 
 app.whenReady().then(() => {
     // Register custom protocol for local media
+    // This allows loading files using media:// prefix securely
     protocol.registerFileProtocol('media', (request, callback) => {
-        const url = request.url.replace('media://', '');
+        const url = request.url.replace(/^media:\/\/|media:\/\/\//, '');
         try {
-            return callback(decodeURIComponent(url));
+            // Robustly decode path and ensure it's a valid local file path
+            const decodedPath = decodeURIComponent(url);
+            return callback(decodedPath);
         } catch (error) {
-            console.error('Failed to register protocol', error);
+            console.error('❌ Failed to handle media protocol:', error);
+            return callback({ error: -2 }); // FILE_NOT_FOUND
         }
     });
     createWindow();
@@ -297,7 +345,7 @@ ipcMain.handle('auth-get-session-user', async () => {
         return { success: false, error: 'No active session' };
     }
     try {
-        const users = await dbQuery('SELECT id, uname, email FROM users WHERE id = ?', [activeUserId]);
+        const users = await dbQuery('SELECT `id`, `uname`, `email` FROM `users` WHERE `id` = ?', [activeUserId]);
         if (users.length === 0) {
             return { success: false, error: 'User not found' };
         }
@@ -419,14 +467,51 @@ ipcMain.handle('extract-visuals', async (event, videoPath) => {
     return await callPythonAPI('/analysis/extract-visuals', { path: videoPath });
 });
 
-ipcMain.handle('chat-query', async (event, { query: userQuery, userId, sessionId, transcript: providedTranscript }) => {
-    console.log('💬 IPC: [GEMINI CHAT] chat-query');
+ipcMain.handle('chat-query', async (event, { query: userQuery, userId, sessionId, transcript: providedTranscript, summary: providedSummary, visuals: providedVisuals }) => {
+    console.log('💬 IPC: [BRIDGE] chat-query -> Python');
     try {
-        // We use the already implemented cloud-based chatQuery for speed & quality
-        const result = await chatQuery(userQuery, userId, sessionId, providedTranscript);
+        // 1. Logger: Save User Message to History
+        if (userId && sessionId) {
+            try {
+                await dbQuery(
+                    'INSERT INTO `chat_history` (`user_id`, `session_id`, `urole`, `umessage`) VALUES (?, ?, ?, ?)',
+                    [userId, sessionId, 'user', userQuery]
+                );
+            } catch (dbErr) { console.error('❌ DB Log Error (User):', dbErr); }
+        }
+
+        // 2. Call Python Backend for AI Logic
+        // Encode visuals to JSON string if it's an object/array
+        const visualsStr = typeof providedVisuals === 'object' ? JSON.stringify(providedVisuals) : (providedVisuals || "");
+
+        const result = await callPythonAPI('/chat/query', {
+            query: userQuery,
+            transcript: providedTranscript || "",
+            summary: providedSummary || "",
+            visuals: visualsStr
+        });
+
+        // POLYFILL: Handle legacy backend response (answer vs response)
+        if (result.success && result.answer && !result.response) {
+            console.log('⚠️ [COMPAT] Mapping result.answer to result.response');
+            result.response = result.answer;
+        }
+
+        // 3. Logger: Save AI Response to History
+        if (result.success && userId && sessionId) {
+            try {
+                const aiMsg = result.response || null;
+                console.log(`🤖 Logging AI Response. User: ${userId}, Session: ${sessionId}, Msg: ${aiMsg ? 'EXISTS' : 'NULL'}`);
+                await dbQuery(
+                    'INSERT INTO `chat_history` (`user_id`, `session_id`, `urole`, `umessage`) VALUES (?, ?, ?, ?)',
+                    [userId, sessionId, 'assistant', aiMsg]
+                );
+            } catch (dbErr) { console.error('❌ DB Log Error (AI):', dbErr); }
+        }
+
         return result;
     } catch (error) {
-        console.error('❌ Chat Error:', error);
+        console.error('❌ Chat IPC Error:', error);
         return { success: false, error: error.message };
     }
 });
@@ -484,34 +569,32 @@ ipcMain.handle('persist-recording', async (event, tempPath) => {
 });
 
 ipcMain.handle('export-report', async (event, { sessionData, format }) => {
-    const filename = `Report_${sessionData.title.replace(/\s+/g, '_')}_${Date.now()}`;
-    const exportsPath = path.join(app.getPath('temp'), 'SummarAI', 'exports');
-    if (!fs.existsSync(exportsPath)) fs.mkdirSync(exportsPath, { recursive: true });
+    try {
+        console.log(`📄 Exporting report as ${format.toUpperCase()}...`);
+        const result = await callPythonAPI('/export', {
+            format: format,
+            title: sessionData.title,
+            summary: sessionData.summary,
+            transcript: sessionData.transcript,
+            visuals: JSON.stringify(sessionData.visuals || [])
+        });
 
-    if (format === 'pdf') {
-        const outputPath = path.join(exportsPath, `${filename}.pdf`);
-        const result = await createPDFReport(sessionData, outputPath);
-        if (result.success) shell.showItemInFolder(outputPath);
-        return result;
-    } else if (format === 'docx') {
-        const outputPath = path.join(exportsPath, `${filename}.docx`);
-        const result = await createDocxReport(sessionData, outputPath);
-        if (result.success) shell.showItemInFolder(outputPath);
-        return result;
-    } else if (format === 'txt') {
-        const outputPath = path.join(exportsPath, `${filename}.txt`);
-        const content = `Title: ${sessionData.title}\nDate: ${new Date(sessionData.date).toLocaleString()}\n\nSummary:\n${sessionData.summary}\n\nTranscript:\n${sessionData.transcript}`;
-        fs.writeFileSync(outputPath, content);
-        shell.showItemInFolder(outputPath);
-        return { success: true, path: outputPath };
+        if (result.success && result.path) {
+            shell.showItemInFolder(result.path);
+            return { success: true, path: result.path };
+        } else {
+            return { success: false, error: result.error || "Export failed" };
+        }
+    } catch (error) {
+        console.error('❌ Export IPC Error:', error);
+        return { success: false, error: error.message };
     }
-    return { success: false, error: 'Unsupported format' };
 });
 
 // Database & Authentication Handlers
 ipcMain.handle('db-login', async (event, { email, password }) => {
     try {
-        const users = await dbQuery('SELECT * FROM users WHERE email = ?', [email]);
+        const users = await dbQuery('SELECT * FROM `users` WHERE `email` = ?', [email]);
         if (users.length === 0) {
             return { success: false, error: 'User not found' };
         }
@@ -538,7 +621,7 @@ ipcMain.handle('db-login', async (event, { email, password }) => {
 ipcMain.handle('db-register', async (event, { name, email, password }) => {
     try {
         // Check if user exists
-        const existingUsers = await dbQuery('SELECT * FROM users WHERE email = ?', [email]);
+        const existingUsers = await dbQuery('SELECT * FROM `users` WHERE `email` = ?', [email]);
         if (existingUsers.length > 0) {
             return { success: false, error: 'Email already registered' };
         }
@@ -549,7 +632,7 @@ ipcMain.handle('db-register', async (event, { name, email, password }) => {
 
         // Insert user
         const result = await dbQuery(
-            'INSERT INTO users (uname, email, password_hash) VALUES (?, ?, ?)',
+            'INSERT INTO `users` (`uname`, `email`, `password_hash`) VALUES (?, ?, ?)',
             [name, email, passwordHash]
         );
 
@@ -564,7 +647,7 @@ ipcMain.handle('db-register', async (event, { name, email, password }) => {
 
 ipcMain.handle('db-forgot-password', async (event, email) => {
     try {
-        const users = await dbQuery('SELECT * FROM users WHERE email = ?', [email]);
+        const users = await dbQuery('SELECT * FROM `users` WHERE `email` = ?', [email]);
         if (users.length === 0) {
             return { success: false, error: 'User not found' };
         }
@@ -589,7 +672,7 @@ ipcMain.handle('db-save-session', async (event, sessionData) => {
         const formattedDate = new Date(date || Date.now()).toISOString().slice(0, 19).replace('T', ' ');
 
         const result = await dbQuery(
-            'INSERT INTO sessions (user_id, title, udate, duration, transcript, summary, classification, visuals, source_type, source_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO `sessions` (`user_id`, `title`, `udate`, `duration`, `transcript`, `summary`, `classification`, `visuals`, `source_type`, `source_path`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 userId || null,
                 title || 'Untitled Session',
@@ -611,15 +694,30 @@ ipcMain.handle('db-save-session', async (event, sessionData) => {
     }
 });
 
+ipcMain.handle('db-update-visuals', async (event, { sessionId, visuals }) => {
+    try {
+        console.log(`💾 Updating visuals for session ${sessionId}...`);
+        const visualsStr = JSON.stringify(visuals || []);
+        await dbQuery('UPDATE `sessions` SET `visuals` = ? WHERE `id` = ?', [visualsStr, sessionId]);
+        console.log('✅ Visuals updated successfully.');
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Failed to update visuals in DB:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 ipcMain.handle('db-get-sessions', async (event, userId) => {
     try {
-        let query = 'SELECT * FROM sessions WHERE user_id = ? ORDER BY udate DESC';
+        // GUEST USER: Return empty list (No History)
+        if (!userId) {
+            console.log('🔵 Guest user requesting sessions - returning empty.');
+            return { success: true, sessions: [] };
+        }
+
+        let query = 'SELECT * FROM `sessions` WHERE `user_id` = ? ORDER BY `udate` DESC';
         let params = [userId];
 
-        if (!userId) {
-            query = 'SELECT * FROM sessions WHERE user_id IS NULL ORDER BY udate DESC';
-            params = [];
-        }
 
         const sessions = await dbQuery(query, params);
         return {
@@ -631,13 +729,14 @@ ipcMain.handle('db-get-sessions', async (event, userId) => {
             }))
         };
     } catch (error) {
+        console.error('❌ Failed to fetch sessions:', error);
         return { success: false, error: error.message };
     }
 });
 
 ipcMain.handle('db-get-user', async (event, userId) => {
     try {
-        const users = await dbQuery('SELECT id, uname, email FROM users WHERE id = ?', [userId]);
+        const users = await dbQuery('SELECT `id`, `uname`, `email` FROM `users` WHERE `id` = ?', [userId]);
         if (users.length === 0) {
             return { success: false, error: 'User not found' };
         }
@@ -659,13 +758,13 @@ ipcMain.handle('db-google-login', async () => {
 
         if (result.success) {
             // Check if user exists in database
-            const users = await dbQuery('SELECT * FROM users WHERE email = ?', [result.user.email]);
+            const users = await dbQuery('SELECT * FROM `users` WHERE `email` = ?', [result.user.email]);
             let user;
 
             if (users.length === 0) {
                 // Register new Google user (dummy password since it's Google login)
                 const insertResult = await dbQuery(
-                    'INSERT INTO users (uname, email, password_hash) VALUES (?, ?, ?)',
+                    'INSERT INTO `users` (`uname`, `email`, `password_hash`) VALUES (?, ?, ?)',
                     [result.user.name, result.user.email, 'GOOGLE_AUTH_USER']
                 );
                 user = { id: insertResult.insertId, name: result.user.name, email: result.user.email };

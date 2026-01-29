@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // Module 5: Visual Extraction
     extractVisuals: (videoPath) => ipcRenderer.invoke('extract-visuals', videoPath),
+    updateVisuals: (data) => ipcRenderer.invoke('db-update-visuals', data),
 
     // Module 6: Chatbot & Knowledge Retrieval
     chatQuery: (query) => ipcRenderer.invoke('chat-query', query),

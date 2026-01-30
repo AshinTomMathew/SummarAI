@@ -185,10 +185,10 @@ async def api_process_link(url: str = Form(...)):
         if not url:
             return {"success": False, "error": "URL cannot be empty"}
         
-        # Support broad range of platforms
-        url_pattern = r'^https?://(www\.)?(youtube\.com|youtu\.ae|vimeo\.com|dailymotion\.com|soundcloud\.com|twitch\.tv|facebook\.com|instagram\.com|linkedin\.com|twitter\.com|x\.com)'
+        # URL validation - Accept any valid HTTP/HTTPS URL (yt-dlp supports 1000+ sites)
+        url_pattern = r'^https?://.+'
         if not re.match(url_pattern, url, re.IGNORECASE):
-            return {"success": False, "error": "Neural Link: This platform is not supported or the URL is malformed."}
+            return {"success": False, "error": "Invalid URL format. Please provide a valid HTTP or HTTPS link."}
         
         # Ensure we have the latest binary paths
         ffmpeg_bin, _ = get_binary_paths()
@@ -200,36 +200,21 @@ async def api_process_link(url: str = Form(...)):
         
         output_tmpl = str(session_folder / "download.%(ext)s")
         
-        # Ultra-fast yt-dlp for audio-only context extraction
+        # Bulletproof yt-dlp configuration (Fixes NoneType Error)
         ydl_opts = {
-            # Use 'worstaudio' or small extensions to minimize data transfer
-            'format': 'worstaudio[ext=m4a]/worstaudio[ext=webm]/worstaudio/bestaudio',
+            'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best',
             'outtmpl': output_tmpl,
-            'noplaylist': True,
+            'ignoreconfig': True,
             'quiet': True,
-            'no_check_certificate': True,
-            'noprogress': True,
             'no_warnings': True,
-            'extract_flat': False,
-            'skip_download': False,
             'ffmpeg_location': ffmpeg_dir if ffmpeg_dir and os.path.exists(ffmpeg_dir) else None,
-            'concurrent_fragments': 10,
-            'http_chunk_size': 10485760, # 10MB chunks
-            'fragment_retries': 2,
-            'retries': 2,
-            'no_color': True,
-            'geo_bypass': True,
-            'check_formats': False,
-            'writesubtitles': False,
-            'writeautomaticsub': False,
-            'writethumbnail': False,
-            'writedescription': False,
-            'writeinfojson': False,
-            'socket_timeout': 15,
-            # Force external downloader for parallelization (if available)
-            'external_downloader': 'builtin',
+            'hls_prefer_native': True, 
+            'dash_prefer_native': True,
             'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'web']}},
-            'postprocessors': [], # Remove any default postprocessors to avoid re-encoding
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            }],
         }
         
         print(f"🔗 Neural Link Processing (Direct): {url}")
@@ -245,23 +230,20 @@ async def api_process_link(url: str = Form(...)):
         try:
             loop = asyncio.get_event_loop()
             with ThreadPoolExecutor() as pool:
-                # Forcefully terminate if it takes more than 180 seconds (3 mins)
-                try:
-                    info = await asyncio.wait_for(
-                        loop.run_in_executor(pool, download_process),
-                        timeout=180.0
-                    )
-                except asyncio.TimeoutError:
-                    print(f"🕒 Link processing TIMEOUT for: {url}")
-                    return {"success": False, "error": "Neural Link Timeout: The source is taking too long to respond (>3 mins). Try a shorter video."}
+                # Run the download until it completes naturally without a forced timeout
+                info = await loop.run_in_executor(pool, download_process)
                 
+                if not info:
+                    print(f"❌ Link processing failed: No info returned for {url}")
+                    return {"success": False, "error": "Neural Link Error: Could not extract information from this link."}
+
                 title = info.get('title', 'Meeting Audio')
                 duration = info.get('duration', 0.0)
                 
                 # Verify downloaded file
                 time.sleep(0.3)
                 final_path = None
-                valid_exts = ['.mp3', '.opus', '.webm', '.m4a', '.ogg', '.wav', '.aac']
+                valid_exts = ['.mp4', '.mp3', '.opus', '.webm', '.m4a', '.ogg', '.wav', '.aac']
                 
                 for file_path in session_folder.glob("*"):
                     if file_path.suffix.lower() in valid_exts and file_path.stat().st_size > 1024:
@@ -275,8 +257,13 @@ async def api_process_link(url: str = Form(...)):
                 return {"success": True, "path": final_path, "title": title, "duration": duration}
                 
         except Exception as e:
+            import sys
+            import yt_dlp
             print(f"❌ Core Link Failure: {traceback.format_exc()}")
-            return {"success": False, "error": f"Neural Core Exception: {str(e)[:100]}"}
+            print(f"🔍 Diagnostic: Python Version={sys.version}")
+            print(f"🔍 Diagnostic: yt-dlp Version={yt_dlp.version.__version__}")
+            print(f"🔍 Diagnostic: yt-dlp Path={yt_dlp.__file__}")
+            return {"success": False, "error": f"Neural Link Error: Internal downloader failure. Please restart the app and try again."}
             
     except ImportError:
         return {"success": False, "error": "Dependency Missing: yt-dlp not found in backend environment."}
@@ -435,4 +422,4 @@ async def export_report(
 if __name__ == "__main__":
     print("🚀 Main Entry Point: Starting Uvicorn...")
     # workers=1 and reload=False are CRITICAL for Electron integration
-    uvicorn.run(app, host="127.250.0.0", port=2611, reload=False, workers=1)
+    uvicorn.run(app, host="127.0.0.1", port=1001, reload=False, workers=1)

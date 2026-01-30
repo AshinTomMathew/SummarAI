@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     generateSummary: (data) => ipcRenderer.invoke('generate-summary', data),
     analyzeContent: (transcript) => ipcRenderer.invoke('analyze-content', transcript),
     transformContent: (data) => ipcRenderer.invoke('transform-content', data),
+    generateBrainTeaser: (transcript) => ipcRenderer.invoke('generate-brain-teaser', transcript),
 
     // Module 5: Visual Extraction
     extractVisuals: (videoPath) => ipcRenderer.invoke('extract-visuals', videoPath),

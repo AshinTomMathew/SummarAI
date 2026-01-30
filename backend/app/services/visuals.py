@@ -12,11 +12,18 @@ import time
 
 # Auto-detect Tesseract on Windows
 if sys.platform == "win32":
-    # Standard installation paths for Tesseract
+    # Standard installation paths for Tesseract (System and User)
     possible_paths = [
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-        os.path.join(os.getenv("LOCALAPPDATA", ""), r"Tesseract-OCR\tesseract.exe")
+        r"C:\Program Files\Tesseract OCR\Tesseract OCR.exe",
+        r"C:\Program Files\Tesseract OCR\tesseract.exe",
+        r"C:\Program Files\Tesseract-OCR\tesseract-ocr.exe",
+        os.path.join(os.getenv("LOCALAPPDATA", ""), r"Tesseract-OCR\tesseract.exe"),
+        os.path.join(os.getenv("APPDATA", ""), r"Tesseract-OCR\tesseract.exe"),
+        # Common chocolatey/scoop paths
+        r"C:\tools\tesseract-ocr\tesseract.exe",
+        r"C:\ProgramData\chocolatey\bin\tesseract.exe"
     ]
     for p in possible_paths:
         if os.path.exists(p):
@@ -54,165 +61,120 @@ def get_frame_difference(frame1, frame2):
     except Exception:
         return 0
 
+import subprocess
+
 def extract_visuals(video_path: str) -> List[Dict]:
     """
-    OFFLINE: Extracts keyframes using OpenCV and performs OCR.
-    Uses smart frame differencing to avoid duplicates and captures slides every few seconds.
+    OFFLINE: Extracts keyframes using FFmpeg (ULTRA FAST) and performs OCR.
+    SPEED OPTIMIZED: Uses FFmpeg to jump to specific timestamps.
     """
     print(f"📸 Visual Extraction Request: {video_path}")
     abs_video_path = os.path.abspath(video_path)
     
     if not os.path.exists(abs_video_path):
-        print(f"❌ Visuals Error: Video file not found: {abs_video_path}")
+        print(f"⏭️ Visual extraction skipped: File not found at {abs_video_path}")
+        return []
+
+    # Verify if it's a video file by checking extension
+    ext = os.path.splitext(abs_video_path)[1].lower()
+    if ext not in ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv']:
+        print(f"⏭️ Visual extraction skipped: Audio-only file ({ext}). No video frames to extract.")
         return []
 
     visuals_dir = Path(tempfile.gettempdir()) / "SummarAI" / "visuals"
     visuals_dir.mkdir(parents=True, exist_ok=True)
     
-    # Create unique session directory
-    session_id = f"vid_{int(os.path.getmtime(abs_video_path))}_{os.path.basename(abs_video_path)}"
+    session_id = f"vid_{int(time.time())}"
     session_dir = visuals_dir / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
     
     try:
-        # Verify file is readable by OpenCV
+        # Get duration using ffprobe or cv2
         cap = cv2.VideoCapture(abs_video_path)
         if not cap.isOpened():
-            print("❌ OpenCV failed to open video. Codec or path issue.")
-            cap.release()
+            print("⏭️ Visual extraction skipped: Video file is corrupted or unsupported format.")
             return []
         
-        # Additional validation: check if video has frames
-        ret, test_frame = cap.read()
-        if not ret or test_frame is None:
-            print("❌ Video file appears to be empty or corrupted.")
-            cap.release()
-            return []
-        # Reset to beginning
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
         fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps <= 0: fps = 30 # Fallback
-        
-        # OPTIMIZATION: Check every 15 seconds instead of 5 to speed up processing significantly
-        interval_seconds = 15 
-        frame_step = int(fps * interval_seconds)
-        if frame_step == 0: frame_step = 30 * 15
-        
-        last_saved_frame = None
-        current_frame_idx = 0
-        saved_count = 0
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        print(f"📸 Starting extraction loop. FPS: {fps:.2f}, Frames: {total_frames}, Step: {frame_step}")
-
-        start_time = time.time()
-        TIMEOUT_SECONDS = 180  # 3 minutes
-
-        while True:
-            # Check Timeout
-            if (time.time() - start_time) > TIMEOUT_SECONDS:
-                print(f"⚠️ Visual Extraction Timed Out (> {TIMEOUT_SECONDS}s). Returning partial results.")
-                break
-
-            # Set position directly using CAP_PROP_POS_FRAMES
-            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame_idx)
-            ret, frame = cap.read()
-            
-            if not ret:
-                break
-                
-            # Duplicate check
-            is_duplicate = False
-            if last_saved_frame is not None:
-                diff_score = get_frame_difference(last_saved_frame, frame)
-                # If MSE < 500, it's likely the same slide/content (static)
-                # Increased threshold to 500 to filter out minor compression artifacts and slight shifts
-                if diff_score < 500: 
-                    is_duplicate = True
-            
-            if not is_duplicate:
-                # Save Frame
-                timestamp_sec = int(current_frame_idx / fps)
-                timestamp_str = f"{timestamp_sec // 60:02d}_{timestamp_sec % 60:02d}"
-                filename = f"slide_{timestamp_str}.jpg"
-                frame_path = str(session_dir / filename)
-                
-                # Resize for storage optimization (720p max)
-                height, width = frame.shape[:2]
-                if width > 1280:
-                    scale = 1280 / width
-                    frame = cv2.resize(frame, (1280, int(height * scale)))
-                
-                cv2.imwrite(frame_path, frame)
-                last_saved_frame = frame
-                saved_count += 1
-                
-                # Run OCR
-                clean_text = ""
-                ocr_status = "Skipped"
-                try:
-                    # Tesseract expects RGB, OpenCV is BGR
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(rgb_frame)
-                    # Use --psm 3 (Auto Page Segmentation) for better slide reading
-                    text = pytesseract.image_to_string(pil_img, config='--psm 3 --oem 1')
-                    clean_text = text.strip()
-                    ocr_status = "Success"
-                except Exception as e:
-                    # If Tesseract fails, we still keep the slide
-                    ocr_status = "Failed"
-                    error_msg = str(e).lower()
-                    if "tesseract is not installed" in error_msg or "not find" in error_msg or "tesseract" in error_msg:
-                        # Friendly message: We are still extracting images!
-                        if saved_count == 1: 
-                            print(f"ℹ️ OCR Text Recognition skipped (Tesseract not found). Visual images will still be saved.")
-                    else:
-                        print(f"⚠️ OCR Error on {filename}: {e}")
-                    # Ensure clean_text is set even on error
-                    clean_text = ""
-
-                # Logic update: Keep result if text exists OR if it's a visual keyframe (even with no text)
-                # This ensures we get visuals even if OCR fails
-                final_text = clean_text if clean_text else f"[Visual Content at {timestamp_str}]"
-                
-                results.append({
-                    "timestamp": f"{timestamp_sec // 60}:{timestamp_sec % 60:02d}",
-                    "text": final_text,
-                    "path": frame_path,
-                    "ocr_status": ocr_status
-                })
-                print(f"✅ Extracted Slide {saved_count} at {timestamp_str} | Text Len: {len(clean_text)}")
-            
-            # Advance loop
-            current_frame_idx += frame_step
-            
-            # Safety limit
-            if saved_count >= 50:
-                print("🛑 Reached max slide limit (50). Stopping.")
-                break
-
+        if fps <= 0: fps = 30
+        duration_sec = total_frames / fps
         cap.release()
-        
-        if len(results) == 0:
-            print("⚠️ No unique visuals found or video was empty.")
+
+        # Decide timestamps to capture (max 15 slides for faster processing, evenly spaced across the WHOLE video)
+        num_slides = 15
+        if duration_sec < 60:
+            num_slides = 5
+        elif duration_sec < 300:
+            num_slides = 10
             
+        interval = duration_sec / (num_slides + 1)
+        timestamps = [interval * i for i in range(1, num_slides + 1)]
+
+        print(f"🕒 Extracting {len(timestamps)} frames at 1080p resolution...")
+
+        for ts in timestamps:
+            mm = int(ts // 60)
+            ss = int(ts % 60)
+            filename = f"slide_{mm:02d}_{ss:02d}.jpg"
+            frame_path = str(session_dir / filename)
+            
+            # ULTRA-RES extraction using FFmpeg seeking
+            # Scale to 1920 (1080p width) for premium quality slides
+            cmd = [
+                'ffmpeg', '-y', '-ss', f"{ts:.2f}", '-i', abs_video_path,
+                '-frames:v', '1', '-q:v', '2', 
+                '-vf', 'scale=1920:-1',
+                frame_path
+            ]
+            
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+                
+                if os.path.exists(frame_path):
+                    # Perform OCR
+                    clean_text = ""
+                    ocr_status = "Skipped"
+                    
+                    # Only attempt OCR if Tesseract is configured
+                    if getattr(pytesseract.pytesseract, 'tesseract_cmd', None):
+                        try:
+                            # Load with PIL for Tesseract
+                            img = Image.open(frame_path)
+                            text = pytesseract.image_to_string(img, config='--psm 3 --oem 1')
+                            clean_text = text.strip()
+                            ocr_status = "Success" if clean_text else "No Text Found"
+                        except PermissionError:
+                            ocr_status = "Permission Denied"
+                        except OSError as e:
+                            if "740" in str(e) or "elevation" in str(e).lower():
+                                ocr_status = "Permission Denied"
+                            else:
+                                ocr_status = "Failed"
+                        except Exception as e:
+                            ocr_status = "Failed"
+                    
+                    timestamp_str = f"{mm:02d}:{ss:02d}"
+                    final_text = clean_text if clean_text else f"[Visual Context at {timestamp_str}]"
+                    
+                    results.append({
+                        "timestamp": timestamp_str,
+                        "text": final_text,
+                        "path": frame_path,
+                        "ocr_status": ocr_status
+                    })
+            except Exception as e:
+                print(f"⚠️ FFmpeg frame extraction failed at {ts}s: {e}")
+                continue
+
+        if len(results) > 0:
+            print(f"✅ Visual Extraction Complete: {len(results)} frames extracted.")
+        else:
+            print(f"⏭️ Visual extraction skipped: No frames could be extracted from this video.")
         return results
 
-    except cv2.error as e:
-        print(f"❌ OpenCV Error during visual extraction: {e}")
-        if 'cap' in locals():
-            cap.release()
-        return []
     except Exception as e:
         print(f"❌ Visual Extraction Fatal Error: {e}")
-        import traceback
-        traceback.print_exc()
-        if 'cap' in locals():
-            try:
-                cap.release()
-            except:
-                pass
         return []

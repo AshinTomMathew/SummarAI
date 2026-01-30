@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, shell, net } from 'electron';
 
 // Register privileged schemes strictly before app.whenReady()
 protocol.registerSchemesAsPrivileged([
@@ -22,7 +22,7 @@ import fs from 'fs';
 // Define __dirname and __filename for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PYTHON_API_BASE = 'http://127.250.0.0:2611';
+const PYTHON_API_BASE = 'http://127.0.0.1:1001';
 
 console.log('🔵 main.js: Starting Electron...');
 
@@ -123,25 +123,27 @@ async function checkBackendHealth(retries = 60, interval = 1000) {
 // Helper to spawn Python Backend
 let backendSpawned = false; // Strict guard to prevent double-spawn
 
+let respawnAttempts = 0;
+const MAX_RESPAWNS = 999; // Essentially infinite for a watchdog behavior
+
 async function spawnPythonBackend() {
-    if (backendSpawned) {
-        console.log('🛑 Backend spawn already triggered. Skipping.');
-        return;
-    }
-    backendSpawned = true; // Mark as spawned immediately
-
     if (pyProcess) {
-        console.log('🔵 Python Backend is already running (process exists).');
+        console.log('🐍 Backend is already running.');
         return;
     }
 
-    console.log('🔍 Checking for existing backend on port 8000...');
-    const isAlreadyRunning = await checkBackendHealth(1, 500); // Quick check (1 retry)
-    if (isAlreadyRunning) {
-        console.log('✅ Found existing backend (likely manual start). Reusing it.');
+    // Check health before spawning to avoid port conflicts
+    const isRunning = await checkBackendHealth(1, 100);
+    if (isRunning) {
+        console.log('✅ Backend found already active (possibly manual start). Monitoring only.');
         isBackendReady = true;
+        backendSpawned = true;
         return;
     }
+
+    backendSpawned = true;
+    const attempt = respawnAttempts + 1;
+    console.log(`🚀 [WATCHDOG] Spawning Python Backend (Attempt ${attempt})...`);
 
     let pyPath;
     let cwd;
@@ -158,7 +160,6 @@ async function spawnPythonBackend() {
     }
 
     if (app.isPackaged ? fs.existsSync(pyPath) : true) {
-        console.log('🚀 Spawning Python Backend:', pyPath, args.join(' '));
         isSpawning = true;
 
         const env = { ...process.env };
@@ -181,32 +182,42 @@ async function spawnPythonBackend() {
         pyProcess.stderr.on('data', (data) => console.error(`🐍 Backend Error: ${data}`));
 
         pyProcess.on('error', (err) => {
-            console.error('❌ Failed to start Python Backend:', err);
+            console.error('❌ Watchdog: Failed to start Python Backend:', err);
             isSpawning = false;
-            backendSpawned = false; // Allow retry
+            backendSpawned = false;
         });
 
         pyProcess.on('exit', (code) => {
-            console.log(`🐍 Backend exited with code ${code}`);
+            console.log(`⚠️ Watchdog: Backend exited with code ${code}`);
             pyProcess = null;
             isBackendReady = false;
             isSpawning = false;
-            backendSpawned = false; // Allow respawn if needed
+            backendSpawned = false;
+
+            // AUTO-RESTART LOOP (WATCHDOG MODE)
+            // If it exit with non-zero (crash), restart. If it exits with 0 (clean), still restart if it was unexpected.
+            const delay = Math.min(respawnAttempts * 2000 + 1000, 10000); // Backoff up to 10s
+            respawnAttempts++;
+
+            console.log(`🔄 [WATCHDOG] Restarting backend in ${delay / 1000}s...`);
+            setTimeout(() => {
+                spawnPythonBackend();
+            }, delay);
         });
 
         pyProcess.unref();
 
         app.on('will-quit', () => {
             if (pyProcess) {
-                console.log('🛑 Killing Python Backend...');
+                console.log('🛑 Watchdog: Cleaning up backend...');
                 pyProcess.kill();
                 pyProcess = null;
             }
         });
     } else {
-        console.error('❌ Python Backend not found at:', pyPath);
+        console.error('❌ Watchdog: Python Backend binary not found at:', pyPath);
         isSpawning = false;
-        backendSpawned = false; // Allow retry
+        backendSpawned = false;
     }
 }
 
@@ -291,15 +302,18 @@ async function createWindow() {
 app.whenReady().then(() => {
     // Register custom protocol for local media
     // This allows loading files using media:// prefix securely
-    protocol.registerFileProtocol('media', (request, callback) => {
-        const url = request.url.replace(/^media:\/\/|media:\/\/\//, '');
+    protocol.handle('media', (request) => {
+        const url = request.url.replace(/^media:\/{2,3}/, '');
         try {
             // Robustly decode path and ensure it's a valid local file path
             const decodedPath = decodeURIComponent(url);
-            return callback(decodedPath);
+            console.log(`📂 Media protocol request: ${decodedPath}`);
+
+            // Return a proper file response
+            return net.fetch('file://' + decodedPath);
         } catch (error) {
             console.error('❌ Failed to handle media protocol:', error);
-            return callback({ error: -2 }); // FILE_NOT_FOUND
+            return new Response('File not found', { status: 404 });
         }
     });
     createWindow();
@@ -465,6 +479,11 @@ ipcMain.handle('transform-content', async (event, { text, format }) => {
 ipcMain.handle('extract-visuals', async (event, videoPath) => {
     console.log('🖼️ IPC: [BRIDGE] extract-visuals');
     return await callPythonAPI('/analysis/extract-visuals', { path: videoPath });
+});
+
+ipcMain.handle('generate-brain-teaser', async (event, transcript) => {
+    const { generateBrainTeaser } = await import('./ai/summarizer.js');
+    return await generateBrainTeaser(transcript);
 });
 
 ipcMain.handle('chat-query', async (event, { query: userQuery, userId, sessionId, transcript: providedTranscript, summary: providedSummary, visuals: providedVisuals }) => {

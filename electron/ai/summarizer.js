@@ -62,3 +62,20 @@ export async function classifyContent(transcript) {
         return { success: false, error: error.message };
     }
 }
+
+export async function generateBrainTeaser(transcript) {
+    if (!process.env.GEMINI_API_KEY) return { success: false };
+
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const prompt = `Based on the following meeting transcript, create a short, fun "Brain Teaser" or "Riddle" or "Factoid" for the user to read while they wait for analysis to finish. 
+        It should be engaging and directly related to the content. Keep it short (max 2-3 sentences).
+        
+        Transcript Snippet: ${transcript.substring(0, 3000)}`;
+
+        const result = await model.generateContent(prompt);
+        return { success: true, teaser: result.response.text().trim() };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}

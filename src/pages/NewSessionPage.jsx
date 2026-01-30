@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import Logo from '../components/Logo';
 import BackButton from '../components/BackButton';
+import GameSelector from '../components/GameSelector';
 import { useToast } from '../context/ToastContext';
 
 export default function NewSessionPage() {
@@ -11,8 +12,10 @@ export default function NewSessionPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [status, setStatus] = useState('');
-    const [videoUrl, setVideoUrl] = useState(''); // Added state
+    const [teaser, setTeaser] = useState(''); // New state for fun engagement
+    const [videoUrl, setVideoUrl] = useState('');
     const [userName, setUserName] = useState('Guest');
+    const [showGame, setShowGame] = useState(false);
     const navigate = useNavigate();
     const { showToast } = useToast();
     const fileInputRef = useRef(null);
@@ -61,6 +64,7 @@ export default function NewSessionPage() {
 
     const processFile = async (filePath, fileName, extraData = {}) => {
         setIsProcessing(true);
+        setTeaser(''); // Reset teaser
         setStatus('Initializing analysis pipeline...');
 
         try {
@@ -97,6 +101,11 @@ export default function NewSessionPage() {
             const transcriptionAndAnalysis = (async () => {
                 const transcriptResult = await window.electronAPI.transcribeAudio(processed.path);
                 if (!transcriptResult.success) throw new Error(transcriptResult.error);
+
+                // FUN ENGAGEMENT: Generate a teaser while the rest of the analysis happens
+                window.electronAPI.generateBrainTeaser(transcriptResult.text).then(t => {
+                    if (t.success) setTeaser(t.teaser);
+                });
 
                 setStatus('Performing deep content analysis...');
                 const analysisResult = await window.electronAPI.analyzeContent(transcriptResult.text);
@@ -157,7 +166,8 @@ export default function NewSessionPage() {
                 summary: summary,
                 classification: category,
                 visuals: visuals,
-                source_type: fileName.startsWith('Live_') ? 'recording' : (filePath.includes('meeting_download_') ? 'link' : 'upload'),
+                source_type: fileName.startsWith('Live_') ? 'recording' :
+                    (filePath.toLowerCase().includes('download') || filePath.includes('meeting_download_') ? 'link' : 'upload'),
                 source_path: finalStoragePath // Use compressed path
             };
 
@@ -308,11 +318,27 @@ export default function NewSessionPage() {
                         </div>
 
                         {isProcessing && (
-                            <div className="px-4 py-4">
+                            <div className="px-4 py-4 flex flex-col gap-4">
                                 <div className="bg-primary/10 border border-primary/20 text-primary p-4 rounded-lg flex items-center gap-3 animate-pulse">
                                     <span className="material-symbols-outlined animate-spin">sync</span>
                                     <span className="font-bold">{status}</span>
                                 </div>
+
+                                {teaser && (
+                                    <div className="bg-white/5 dark:bg-[#1c2e17] border border-primary/30 p-6 rounded-2xl shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                        <div className="flex items-start gap-4">
+                                            <div className="bg-primary/20 p-2 rounded-lg text-primary">
+                                                <span className="material-symbols-outlined">psychology</span>
+                                            </div>
+                                            <div className="flex-1">
+                                                <h4 className="text-primary font-bold text-sm uppercase tracking-wider mb-2">While you wait: Content Teaser</h4>
+                                                <p className="text-slate-700 dark:text-gray-300 italic text-lg leading-relaxed">
+                                                    "{teaser}"
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -395,6 +421,20 @@ export default function NewSessionPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Floating Play Game Button - Shows during processing */}
+                {isProcessing && !showGame && (
+                    <button
+                        onClick={() => setShowGame(true)}
+                        className="fixed bottom-8 right-8 bg-primary text-black px-6 py-3 rounded-full font-black text-sm uppercase tracking-wider shadow-2xl hover:scale-110 transition-transform flex items-center gap-2 z-50 animate-bounce shadow-[0_0_15px_rgba(70,236,19,0.5)]"
+                    >
+                        <span className="material-symbols-outlined">sports_esports</span>
+                        Play Games
+                    </button>
+                )}
+
+                {/* Game Selector Modal */}
+                {showGame && <GameSelector transcript="" summary="" onClose={() => setShowGame(false)} />}
             </main>
         </div>
     );

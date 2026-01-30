@@ -16,3 +16,4 @@ numpy
 pillow
 opencv-python
 groq
+google-generativeai

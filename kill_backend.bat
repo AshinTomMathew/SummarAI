@@ -4,7 +4,7 @@ echo --------------------------------------------------
 echo [1/2] Searching for zombie backend on port 2611...
 echo --------------------------------------------------
 
-powershell -Command "Get-NetTCPConnection -LocalPort 2611 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host '>>> Found and terminated process on port 2611' -ForegroundColor Yellow }"
+powershell -Command "Get-NetTCPConnection -LocalPort 1001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue; Write-Host '>>> Found and terminated process on port 1001' -ForegroundColor Yellow }"
 
 echo --------------------------------------------------
 echo [2/2] Cleaning up any stray Python main.py processes...

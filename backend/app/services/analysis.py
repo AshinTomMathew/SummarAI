@@ -69,14 +69,25 @@ def analyze_transcript(text: str) -> dict:
             "summary": "Insufficient content for a detailed analysis."
         }
 
-    api_key = os.environ.get("GROQ_API_KEY")
-    if api_key:
+    # 1. Try Groq (Primary then Secondary)
+    groq_keys = [os.environ.get("GROQ_API_KEY"), os.environ.get("GROQ_API_KEY_2")]
+    
+    for i, api_key in enumerate(groq_keys):
+        if not api_key: continue
+        
         try:
-            print("🚀 Using Unified Analysis Engine (Groq)...")
+            engine_label = "Primary" if i == 0 else "Secondary"
+            print(f"🚀 Using Unified Analysis Engine (Groq - {engine_label})...")
             client = Groq(api_key=api_key)
-            chunk = text[:12000] # Use a large chunk for context
+            chunk = text[:6000]  # Reduced for faster processing
             
             # THE EXACT PROMPT REQUESTED BY THE USER
+            system_prompt = """You are an AI content analysis engine.
+            Your task has TWO STEPS and you must perform them in order.
+            ... rest of system prompt ...
+            """ # Shortened for clarity in snippet, will keep full logic
+            
+            # Re-implementing with full system prompt for safety
             system_prompt = """You are an AI content analysis engine.
 
 Your task has TWO STEPS and you must perform them in order.
@@ -154,26 +165,29 @@ Return ONLY valid JSON in the following structure:
   "summary": "<generated_summary_text>"
 }
 """
-            
             chat_completion = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"TRANSCRIPT:\n\"\"\"\n{chunk}\n\"\"\""}
                 ],
                 model="llama-3.3-70b-versatile",
-                temperature=0.5, # Slightly higher for more descriptive output
-                response_format={"type": "json_object"} # Ensure JSON output
+                temperature=0.5,
+                response_format={"type": "json_object"}
             )
             
             response_text = chat_completion.choices[0].message.content
             result = json.loads(response_text)
             
-            # Ensure the structure matches expectations
             if "category" in result and "summary" in result:
                 return result
-            
+                
         except Exception as e:
-            print(f"⚠️ Unified Analysis Failed: {e}. Falling back to legacy separate steps...")
+            engine_label = "Primary" if i == 0 else "Secondary"
+            print(f"⚠️ Groq {engine_label} Analysis Failed: {e}")
+            if i == 0 and groq_keys[1]:
+                print("🔄 Switching to Secondary Groq Key for Analysis...")
+                continue
+            print("Falling back to legacy separate steps...")
 
     # Fallback to separate local/sequential steps if Groq fails or is not available
     cat = classify(text)

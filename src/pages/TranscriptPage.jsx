@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import BackButton from '../components/BackButton';
+import MindMap from '../components/MindMap';
+import GameSelector from '../components/GameSelector';
 import { useToast } from '../context/ToastContext';
 
 const LiveBackground = () => (
@@ -41,7 +43,9 @@ export default function TranscriptPage() {
 
     const [summary, setSummary] = useState(sessionData.summary);
     const [isTransforming, setIsTransforming] = useState(false);
-    const [expandedView, setExpandedView] = useState(null); // 'summary' | 'transcript' | null
+    const [expandedView, setExpandedView] = useState(null); // 'summary' | 'transcript' | 'visuals' | null
+    const [showMindMap, setShowMindMap] = useState(false);
+    const [showGames, setShowGames] = useState(false);
     const [copyStatus, setCopyStatus] = useState(null);
 
     const handleCopy = (text) => {
@@ -52,6 +56,7 @@ export default function TranscriptPage() {
 
     const handleTransform = async (format) => {
         if (!window.electronAPI || isTransforming) return;
+
         setIsTransforming(true);
         try {
             const result = await window.electronAPI.transformContent({
@@ -61,6 +66,11 @@ export default function TranscriptPage() {
             if (result.success) {
                 setSummary(result.transformed);
                 showToast('Content transformed successfully!', 'success');
+
+                // Special handling for mindmap - show visual mindmap after getting content
+                if (format === 'mindmap') {
+                    setShowMindMap(true);
+                }
             } else {
                 showToast("Transformation failed: " + result.error, 'error');
             }
@@ -89,6 +99,13 @@ export default function TranscriptPage() {
                             <Link to="/export" state={{ ...sessionData, summary }} className="flex cursor-pointer items-center justify-center overflow-hidden rounded-full h-10 px-6 bg-primary text-[#152211] hover:bg-[#3cd610] transition-colors text-sm font-bold leading-normal tracking-[0.015em] shadow-[0_0_15px_rgba(70,236,19,0.3)]">
                                 <span className="truncate">Share / Export</span>
                             </Link>
+                            <button
+                                onClick={() => setShowGames(true)}
+                                className="flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-full h-10 px-6 bg-slate-200 dark:bg-[#2c4823] text-slate-900 dark:text-white hover:bg-slate-300 dark:hover:bg-[#3a5e2e] transition-colors text-sm font-bold border border-white/5"
+                            >
+                                <span className="material-symbols-outlined text-[18px]">sports_esports</span>
+                                <span className="truncate">Play Games</span>
+                            </button>
                             <Link to="/chat" state={sessionData} className="flex cursor-pointer items-center justify-center overflow-hidden rounded-full size-10 bg-slate-200 dark:bg-[#2c4823] text-slate-900 dark:text-white hover:bg-slate-300 dark:hover:bg-[#3a5e2e] transition-colors border border-white/5">
                                 <span className="material-symbols-outlined text-[20px]">chat</span>
                             </Link>
@@ -214,35 +231,23 @@ export default function TranscriptPage() {
                                     </div>
                                 </div>
 
+                                {/* View Visuals Button - Only show if visuals exist */}
                                 {sessionData.visuals && sessionData.visuals.length > 0 && (
-                                    <div className="bg-white dark:bg-[#1c2e17] rounded-2xl border border-slate-200 dark:border-[#2c4823] p-5 shadow-lg">
-                                        <h3 className="text-slate-900 dark:text-white font-bold flex items-center gap-2 mb-4">
-                                            <span className="material-symbols-outlined text-primary">image</span>Visuals & Analysis
-                                        </h3>
-                                        <div className="flex flex-col gap-4">
-                                            {sessionData.visuals.map((v, i) => (
-                                                <div key={i} className="group relative rounded-lg overflow-hidden border border-slate-200 dark:border-[#2c4823] bg-slate-50 dark:bg-[#152211]">
-                                                    <div className="aspect-video bg-slate-200 dark:bg-[#2c4823] flex items-center justify-center relative">
-                                                        <img src={`media://${v.path}`} alt={`Frame ${i}`} className="w-full h-full object-cover" />
-                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center items-center gap-3 p-4">
-                                                            <p className="text-[10px] text-white line-clamp-2 text-center">{v.text}</p>
-                                                            <div className="flex gap-2">
-                                                                <button onClick={() => window.open(`media://${v.path}`)} className="bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-colors"><span className="material-symbols-outlined text-sm">visibility</span></button>
-                                                                {!userIsGuest && (
-                                                                    <button onClick={() => {
-                                                                        const link = document.createElement('a');
-                                                                        link.href = `media://${v.path}`;
-                                                                        link.download = `Slide_${i}.jpg`;
-                                                                        link.click();
-                                                                    }} className="bg-primary text-background-dark p-2 rounded-full transition-colors"><span className="material-symbols-outlined text-sm">download</span></button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                    <button
+                                        onClick={() => setExpandedView('visuals')}
+                                        className="glass-card rounded-2xl p-4 shadow-lg flex items-center justify-between border border-white/5 hover:border-primary/30 transition-all group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                                                <span className="material-symbols-outlined text-primary">collections</span>
+                                            </div>
+                                            <div className="flex flex-col items-start">
+                                                <h3 className="text-slate-900 dark:text-white font-bold text-sm">View Extracted Frames</h3>
+                                                <p className="text-xs text-text-muted">{sessionData.visuals.length} visual{sessionData.visuals.length !== 1 ? 's' : ''} captured</p>
+                                            </div>
                                         </div>
-                                    </div>
+                                        <span className="material-symbols-outlined text-primary group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                                    </button>
                                 )}
                             </div>
 
@@ -303,21 +308,27 @@ export default function TranscriptPage() {
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center justify-center size-12 rounded-2xl bg-primary/20 text-primary shadow-lg shadow-primary/10">
                                         <span className="material-symbols-outlined text-[28px] fill-1">
-                                            {expandedView === 'summary' ? 'auto_awesome' : 'description'}
+                                            {expandedView === 'summary' ? 'auto_awesome' : expandedView === 'visuals' ? 'collections' : 'description'}
                                         </span>
                                     </div>
                                     <div className="flex flex-col">
-                                        <h2 className="text-white text-2xl font-black uppercase tracking-[0.2em]">{expandedView === 'summary' ? 'AI Generated Intelligence' : 'Full Meeting Transcript'}</h2>
-                                        <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-0.5">Focus Mode • Deep Analysis View</p>
+                                        <h2 className="text-white text-2xl font-black uppercase tracking-[0.2em]">
+                                            {expandedView === 'summary' ? 'AI Generated Intelligence' : expandedView === 'visuals' ? 'Extracted Visual Frames' : 'Full Meeting Transcript'}
+                                        </h2>
+                                        <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-0.5">
+                                            {expandedView === 'visuals' ? `${sessionData.visuals?.length || 0} Frames • 1080p Quality` : 'Focus Mode • Deep Analysis View'}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <button
-                                        onClick={() => handleCopy(expandedView === 'summary' ? summary : sessionData.transcript)}
-                                        className="bg-white/5 hover:bg-primary hover:text-black text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 border border-white/10 hover:border-primary shadow-xl shadow-black/20 active:scale-95 group/btn"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px] group-hover/btn:scale-110 transition-transform">content_copy</span> Copy Full Content
-                                    </button>
+                                    {expandedView !== 'visuals' && (
+                                        <button
+                                            onClick={() => handleCopy(expandedView === 'summary' ? summary : sessionData.transcript)}
+                                            className="bg-white/5 hover:bg-primary hover:text-black text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2 border border-white/10 hover:border-primary shadow-xl shadow-black/20 active:scale-95 group/btn"
+                                        >
+                                            <span className="material-symbols-outlined text-[18px] group-hover/btn:scale-110 transition-transform">content_copy</span> Copy Full Content
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setExpandedView(null)}
                                         className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white size-12 rounded-2xl transition-all flex items-center justify-center border border-red-500/20 active:scale-90"
@@ -329,88 +340,177 @@ export default function TranscriptPage() {
 
                             {/* Modal Content */}
                             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row relative">
-                                {/* Text Content Area with Animated Live BG */}
-                                <div className={`flex-1 overflow-y-auto p-8 md:p-16 lg:p-20 custom-scrollbar relative ${expandedView === 'summary' ? 'lg:border-r lg:border-white/5' : ''}`}>
-                                    {/* Subtle Mesh Glow Background */}
-                                    <div className="absolute inset-0 bg-[#0d160b] overflow-hidden -z-10">
-                                        <div className="absolute -top-[20%] -left-[10%] size-[60%] bg-primary/5 rounded-full blur-[120px] animate-pulse"></div>
-                                        <div className="absolute -bottom-[10%] -right-[5%] size-[50%] bg-primary/3 rounded-full blur-[100px] animate-pulse delay-700"></div>
+                                {/* Visuals Grid View */}
+                                {expandedView === 'visuals' ? (
+                                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar relative bg-[#0d160b]">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
+                                            {sessionData.visuals?.map((v, i) => (
+                                                <div key={i} className="group relative rounded-2xl overflow-hidden border border-white/10 bg-[#152211] hover:border-primary/30 transition-all">
+                                                    <div className="aspect-video bg-[#2c4823] flex items-center justify-center relative">
+                                                        <img src={`media://${v.path}`} alt={`Frame ${i}`} className="w-full h-full object-cover" />
+                                                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center items-center gap-4 p-6">
+                                                            <div className="text-center">
+                                                                <p className="text-primary text-xs font-bold mb-1">Timestamp: {v.timestamp}</p>
+                                                                <p className="text-white/80 text-xs line-clamp-3">{v.text}</p>
+                                                            </div>
+                                                            <div className="flex gap-3">
+                                                                <button
+                                                                    onClick={() => window.open(`media://${v.path}`)}
+                                                                    className="bg-white/20 hover:bg-white/40 text-white px-4 py-2 rounded-xl transition-colors flex items-center gap-2 text-xs font-bold"
+                                                                >
+                                                                    <span className="material-symbols-outlined text-sm">visibility</span> View
+                                                                </button>
+                                                                {!userIsGuest && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const link = document.createElement('a');
+                                                                            link.href = `media://${v.path}`;
+                                                                            link.download = `Frame_${v.timestamp.replace(':', '-')}.jpg`;
+                                                                            link.click();
+                                                                        }}
+                                                                        className="bg-primary hover:bg-primary/80 text-black px-4 py-2 rounded-xl transition-colors flex items-center gap-2 text-xs font-bold"
+                                                                    >
+                                                                        <span className="material-symbols-outlined text-sm">download</span> Save
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-3 border-t border-white/5">
+                                                        <p className="text-primary text-xs font-bold">Frame {i + 1} • {v.timestamp}</p>
+                                                        <p className="text-white/40 text-[10px] mt-1 line-clamp-2">{v.text}</p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-
-                                    <div className="text-gray-200 text-base md:text-lg leading-[2] whitespace-pre-wrap font-medium max-w-3xl mx-auto selection:bg-primary selection:text-black relative">
-                                        {(expandedView === 'summary' ? summary : sessionData.transcript).replace(/[#*]/g, '')}
-                                    </div>
-                                </div>
-
-                                {/* Sidebar Transformation Tools (Only for Summary) */}
-                                {expandedView === 'summary' && (
-                                    <div className="w-full lg:w-[360px] bg-[#0b130a] p-8 flex flex-col gap-8 border-t lg:border-t-0 border-white/5 shrink-0 relative overflow-y-auto custom-scrollbar">
-                                        <div className="flex flex-col gap-2">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <div className="size-2 rounded-full bg-primary animate-ping"></div>
-                                                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-primary">Live Toolkit</span>
+                                ) : (
+                                    <>
+                                        {/* Text Content Area with Animated Live BG */}
+                                        <div className={`flex-1 overflow-y-auto p-8 md:p-16 lg:p-20 custom-scrollbar relative ${expandedView === 'summary' ? 'lg:border-r lg:border-white/5' : ''}`}>
+                                            {/* Subtle Mesh Glow Background */}
+                                            <div className="absolute inset-0 bg-[#0d160b] overflow-hidden -z-10">
+                                                <div className="absolute -top-[20%] -left-[10%] size-[60%] bg-primary/5 rounded-full blur-[120px] animate-pulse"></div>
+                                                <div className="absolute -bottom-[10%] -right-[5%] size-[50%] bg-primary/3 rounded-full blur-[100px] animate-pulse delay-700"></div>
                                             </div>
-                                            <h3 className="text-white text-lg font-black leading-tight">Re-analyze Context</h3>
-                                            <p className="text-white/40 text-[10px] font-bold uppercase leading-relaxed">Instantly transform this summary into a different perspective.</p>
+
+                                            <div className="text-gray-200 text-base md:text-lg leading-[2] whitespace-pre-wrap font-medium max-w-3xl mx-auto selection:bg-primary selection:text-black relative">
+                                                {(expandedView === 'summary' ? summary : sessionData.transcript).replace(/[#*]/g, '')}
+                                            </div>
                                         </div>
 
-                                        <div className="flex flex-col gap-4">
-                                            <button
-                                                onClick={() => handleTransform('points')}
-                                                className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">format_list_bulleted</span>
-                                                    <span>POINTS</span>
+                                        {/* Sidebar Transformation Tools (Only for Summary) */}
+                                        {expandedView === 'summary' && (
+                                            <div className="w-full lg:w-[360px] bg-[#0b130a] p-8 flex flex-col gap-8 border-t lg:border-t-0 border-white/5 shrink-0 relative overflow-y-auto custom-scrollbar">
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <div className="size-2 rounded-full bg-primary animate-ping"></div>
+                                                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-primary">Live Toolkit</span>
+                                                    </div>
+                                                    <h3 className="text-white text-lg font-black leading-tight">Re-analyze Context</h3>
+                                                    <p className="text-white/40 text-[10px] font-bold uppercase leading-relaxed">Instantly transform this summary into a different perspective.</p>
                                                 </div>
-                                                <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
-                                            </button>
 
-                                            <button
-                                                onClick={() => handleTransform('mindmap')}
-                                                className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">account_tree</span>
-                                                    <span>MINDMAP</span>
+                                                <div className="flex flex-col gap-4">
+                                                    <button
+                                                        onClick={() => handleTransform('points')}
+                                                        className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">format_list_bulleted</span>
+                                                            <span>POINTS</span>
+                                                        </div>
+                                                        <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => handleTransform('mindmap')}
+                                                        className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">account_tree</span>
+                                                            <span>MINDMAP</span>
+                                                        </div>
+                                                        <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => handleTransform('speakers')}
+                                                        className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">record_voice_over</span>
+                                                            <span>SPEAKERS</span>
+                                                        </div>
+                                                        <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
+                                                    </button>
+
+                                                    <div className="h-[1px] bg-white/5 my-2"></div>
+
+                                                    <button
+                                                        onClick={() => setSummary(sessionData.summary)}
+                                                        className="flex items-center justify-center gap-2.5 py-4 px-5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-[12px] font-black rounded-2xl transition-all border border-white/10"
+                                                    >
+                                                        <span className="material-symbols-outlined text-[20px]">history</span>
+                                                        <span>RESET ORIGINAL</span>
+                                                    </button>
                                                 </div>
-                                                <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
-                                            </button>
 
-                                            <button
-                                                onClick={() => handleTransform('speakers')}
-                                                className="flex items-center justify-between gap-2.5 py-4 px-5 bg-primary/10 hover:bg-primary text-primary hover:text-black text-[12px] font-black rounded-2xl transition-all border border-primary/20 hover:border-primary shadow-lg shadow-black/20 group/btn"
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className="material-symbols-outlined text-[22px] group-hover/btn:scale-110 transition-transform">record_voice_over</span>
-                                                    <span>SPEAKERS</span>
-                                                </div>
-                                                <span className="material-symbols-outlined text-[16px] opacity-0 group-hover/btn:opacity-100 -translate-x-2 group-hover/btn:translate-x-0 transition-all">chevron_right</span>
-                                            </button>
-
-                                            <div className="h-[1px] bg-white/5 my-2"></div>
-
-                                            <button
-                                                onClick={() => setSummary(sessionData.summary)}
-                                                className="flex items-center justify-center gap-2.5 py-4 px-5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-[12px] font-black rounded-2xl transition-all border border-white/10"
-                                            >
-                                                <span className="material-symbols-outlined text-[20px]">history</span>
-                                                <span>RESET ORIGINAL</span>
-                                            </button>
-                                        </div>
-
-                                        {isTransforming && (
-                                            <div className="absolute inset-0 bg-[#13200f]/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
-                                                <div className="size-16 border-4 border-primary/10 border-t-primary rounded-full animate-spin mb-6"></div>
-                                                <h4 className="text-primary font-black uppercase tracking-[0.3em] text-[13px]">Deep Neural Passthrough</h4>
-                                                <p className="text-white/40 text-[9px] mt-2 font-bold uppercase">Synthesizing new perspective...</p>
+                                                {isTransforming && (
+                                                    <div className="absolute inset-0 bg-[#13200f]/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300">
+                                                        <div className="size-16 border-4 border-primary/10 border-t-primary rounded-full animate-spin mb-6"></div>
+                                                        <h4 className="text-primary font-black uppercase tracking-[0.3em] text-[13px]">Deep Neural Passthrough</h4>
+                                                        <p className="text-white/40 text-[9px] mt-2 font-bold uppercase">Synthesizing new perspective...</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
-                                    </div>
+                                    </>
                                 )}
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Visual MindMap Modal */}
+                {showMindMap && (
+                    <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-2 md:p-4 transition-all animate-in fade-in duration-300">
+                        <div className="bg-[#0f1a0b] w-full max-w-7xl h-full rounded-[3rem] border border-white/10 flex flex-col overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-300 relative">
+
+                            {/* Modal Header */}
+                            <div className="px-10 py-8 border-b border-white/10 flex items-center justify-between bg-[#13200f] relative z-10">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center justify-center size-12 rounded-2xl bg-primary/20 text-primary shadow-lg shadow-primary/10">
+                                        <span className="material-symbols-outlined text-[28px] fill-1">account_tree</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <h2 className="text-white text-2xl font-black uppercase tracking-[0.2em]">Visual Mind Map</h2>
+                                        <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-0.5">Interactive Knowledge Graph</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowMindMap(false)}
+                                    className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white size-12 rounded-2xl transition-all flex items-center justify-center border border-red-500/20 active:scale-90"
+                                >
+                                    <span className="material-symbols-outlined text-[24px]">close</span>
+                                </button>
+                            </div>
+
+                            {/* MindMap Content */}
+                            <div className="flex-1 overflow-hidden relative">
+                                <MindMap content={summary} />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Game Selector */}
+                {showGames && (
+                    <GameSelector
+                        transcript={sessionData.transcript}
+                        summary={summary}
+                        onClose={() => setShowGames(false)}
+                    />
                 )}
             </main>
         </div>

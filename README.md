@@ -15,7 +15,7 @@
 *   **Content-Aware Analysis**: Automatically classifies recordings into **Educational, Business, Team Meeting, Podcast, or Interview**.
 *   **Advanced AI Transformations**: One-click reformatting of summaries into:
     *   **Points**: Structured, decision-oriented bullet points.
-    *   **Mindmap**: Educational study guides with text-based mindmaps, flashcards, and keynotes.
+    *   **Visual Mindmap**: Interactive, graph-based mind maps with hierarchical knowledge structure (powered by Mermaid.js).
     *   **Speaker Breakdown**: Detailed attribution of "who said what".
 *   **Unified AI Engine**: Powered by **Groq (Llama-3.3-70b)** for lightning-fast analysis.
 
@@ -31,6 +31,22 @@
 ### 5. Professional Export
 *   Generate polished reports in **PDF, DOCX (Word), or TXT** formats.
 *   Automated temporary storage management keeps your system clean.
+
+### 6. Grounded AI with Visual Intelligence
+*   **Frame Extraction**: Automatically captures up to 30 high-resolution (1080p) frames from videos at strategic intervals.
+*   **OCR-Powered Text Recognition**: Uses Tesseract OCR to extract text from slides, presentations, whiteboards, and diagrams.
+*   **Visual Context Integration**: Extracted visual content is analyzed alongside audio transcripts to provide comprehensive, grounded insights.
+*   **Smart Frame Selection**: Intelligent frame distribution ensures coverage across the entire video duration for maximum context capture.
+*   **On-Demand Viewing**: Visual frames are hidden by default and accessible via a dedicated "View Extracted Frames" button, opening a full-screen gallery with timestamps and OCR text.
+*   **Grounded Responses**: AI chat responses are grounded in both spoken content and visual materials, ensuring accurate, context-aware answers.
+
+### 7. Fun & Engagement - Content-Based Learning Games
+*   **Content Quiz Game**: Auto-generated fill-in-the-blank questions from your actual meeting transcript - test your knowledge retention!
+*   **Word Match Game**: Match key terms extracted from the session with their contextual definitions - perfect for vocabulary building.
+*   **Snake Game**: Classic arcade game for quick brain breaks during long analysis sessions.
+*   **Smart Integration**: Games appear during processing (floating button) and are accessible anytime from the Transcript page via "Play Games" button.
+*   **Educational Value**: Quiz and Word Match games use real content from YOUR sessions, making learning personalized and relevant.
+*   **Optimized Performance**: Reduced processing time with faster AI analysis (6000 character chunks) and streamlined visual extraction (15 frames max).
 
 ---
 
@@ -58,7 +74,7 @@ GROQ_API_KEY=your_groq_key_here
 DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=your_password
-DB_NAME=summarai
+DB_NAME=meetingai
 ```
 
 ### 3. Quick Start
@@ -76,5 +92,26 @@ DB_NAME=summarai
 
 ---
 
-Developed as a Final Year MCA Project.  
-**Turn conversations into conclusions with SummarAI.**
+## 📈 Project Status & Roadmap
+
+### Current Progress: **95% Complete**
+| Module | Progress | Status |
+| :--- | :--- | :--- |
+| **Analysis Engine (Groq/Llama)** | 100% | Done |
+| **Visual/OCR Pipeline** | 100% | Done |
+| **Educational Game Suite** | 100% | Done |
+| **Meeting Vault & History** | 95% | Polishing |
+| **Multi-Input Processing** | 100% | Done |
+| **UI/UX Aesthetics** | 98% | Polishing |
+
+### 🚀 Future Roadmap
+*   **🌍 Multi-lingual Support**: Real-time translation and transcription for 50+ languages.
+*   **📅 Calendar Integration**: Seamless sync with Google Calendar & Outlook for automated processing.
+*   **🎭 Sentiment Analysis**: Advanced detection of speaker tones and meeting climate.
+*   **📱 Mobile Companion**: View analysis results and chat with your meetings on iOS/Android.
+*   **🤝 Team Collaboration**: Real-time collaborative workspace for shared meeting notes.
+
+---
+
+Developed as a Third Year MCA Project.  
+**Turn conversations into conclusions with MeetingAI (Summar AI).**

@@ -33,7 +33,7 @@ export default function ToolbarPage() {
             console.log("Screenshot saved to:", result.path);
 
             // Temporary popup using native notification
-            new Notification('SummarAI', { body: 'Screenshot Saved to Desktop', icon: result.path });
+            new Notification('SummarAI', { body: 'Screenshot Saved to Pictures/SummarAI', icon: result.path });
         }
     };
 

@@ -8,7 +8,7 @@ protocol.registerSchemesAsPrivileged([
 import { spawn } from 'child_process';
 import path from 'path';
 import bcrypt from 'bcryptjs';
-import { initDatabase, query as dbQuery } from './database.js';
+import { initDatabase, query as dbQuery } from '../db/database.js';
 import { generateSummary, classifyContent } from './ai/summarizer.js';
 import { createPDFReport, createDocxReport } from './ai/export.js';
 import { googleSignIn } from './auth.js';
@@ -262,7 +262,7 @@ async function createWindow() {
         },
         backgroundColor: '#142210',
         titleBarStyle: 'default',
-        icon: path.join(__dirname, '../public/icon.png'),
+        icon: path.join(__dirname, '../frontend/public/icon.png'),
     });
 
     // Content Security Policy
@@ -311,7 +311,7 @@ async function createWindow() {
         mainWindow.loadURL(devUrl);
         // mainWindow.webContents.openDevTools();
     } else {
-        const indexPath = path.join(__dirname, '../dist/index.html');
+        const indexPath = path.join(__dirname, '../frontend/dist/index.html');
         console.log('🔵 Loading File:', indexPath);
         if (fs.existsSync(indexPath)) {
             mainWindow.loadFile(indexPath);
@@ -552,7 +552,7 @@ ipcMain.handle('show-toolbar', () => {
     if (isDev) {
         toolbarWindow.loadURL('http://localhost:5173/#/toolbar');
     } else {
-        toolbarWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'toolbar' });
+        toolbarWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'toolbar' });
     }
 });
 
@@ -575,7 +575,12 @@ ipcMain.handle('take-screenshot', async () => {
 
         if (sources.length > 0) {
             const buffer = sources[0].thumbnail.toPNG();
-            const filePath = path.join(os.homedir(), 'Desktop', `SummarAI_Snap_${crypto.randomBytes(3).toString('hex')}.png`);
+            const picturesPath = app.getPath('pictures');
+            const dirPath = path.join(picturesPath, 'SummarAI');
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true });
+            }
+            const filePath = path.join(dirPath, `SummarAI_Snap_${crypto.randomBytes(3).toString('hex')}.png`);
             fs.writeFileSync(filePath, buffer);
             console.log("✅ Screenshot saved:", filePath);
             return { success: true, path: filePath };
@@ -631,7 +636,7 @@ ipcMain.handle('show-drawing-overlay', () => {
     if (isDev) {
         drawingWindow.loadURL('http://localhost:5173/#/drawing');
     } else {
-        drawingWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'drawing' });
+        drawingWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'drawing' });
     }
 
     return { success: true };

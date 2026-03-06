@@ -10,11 +10,11 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
+    "dev": "vite frontend",
+    "build": "vite build frontend",
+    "preview": "vite preview frontend",
+    "electron:dev": "concurrently \"vite frontend\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build frontend && electron-builder"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -60,9 +60,9 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*",
+      "frontend/dist/**/*",
       "electron/**/*",
-      "public/**/*",
+      "db/**/*",
       "package.json",
       ".env"
     ],
@@ -75,7 +75,7 @@
     ],
     "win": {
       "target": "portable",
-      "icon": "public/icon.png"
+      "icon": "frontend/public/icon.png"
     },
     "extraResources": [
       {

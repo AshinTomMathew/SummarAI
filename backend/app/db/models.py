@@ -26,7 +26,7 @@ class Session(Base):
     source_path = Column(String(255))
 
 # SQLite for local persistence as requested
-DATABASE_URL = "sqlite:///./summarai.db"
+DATABASE_URL = "sqlite:///../db/summarai.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

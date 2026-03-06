@@ -53,47 +53,11 @@ def inject_binary_paths():
         path_sep = ";" if sys.platform == "win32" else ":"
         updated_path = path_sep.join(new_paths) + path_sep + current_path
         os.environ["PATH"] = updated_path
-        
-        # Export results to diagnostic file
-        with open("backend_diagnostic.txt", "w") as f:
-            f.write("--- BINARY PATH DIAGNOSTICS ---\n")
-            f.write(f"Current Working Directory: {os.getcwd()}\n")
-            f.write(f"Injected: {new_paths}\n")
-            f.write(f"Final PATH: {os.environ.get('PATH', '')}\n")
-            
-            # Call get_binary_paths and log its results
-            from app.utils.paths import get_binary_paths
-            f_cmd, p_cmd = get_binary_paths()
-            f.write(f"get_binary_paths() -> ffmpeg: {f_cmd}, ffprobe: {p_cmd}\n")
-            
-            import subprocess
-            try:
-                res = subprocess.run([f_cmd, "-version"], capture_output=True, text=True)
-                f.write(f"ffmpeg absolute test success: {res.stdout[:50]}\n")
-            except Exception as e:
-                f.write(f"ffmpeg absolute test FAILED: {e}\n")
-                f.write(traceback.format_exc())
-                
-            try:
-                res = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, shell=True) # Check PATH version
-                f.write(f"ffmpeg PATH test success: {res.stdout[:50]}\n")
-            except Exception as e:
-                f.write(f"ffmpeg PATH test FAILED: {e}\n")
-
-            try:
-                res = subprocess.run([p_cmd, "-version"], capture_output=True, text=True)
-                f.write(f"ffprobe absolute test success: {res.stdout[:50]}\n")
-            except Exception as e:
-                f.write(f"ffprobe absolute test FAILED: {e}\n")
-                f.write(traceback.format_exc())
-            f.write("-------------------------------\n")
-        
-        print("Backend diagnostics updated.")
+        print("Backend injected FFMPEG path successfully.")
 
 inject_binary_paths()
 
 # Services
-import torch
 from app.services.audio import normalize_audio, get_duration, compress_audio
 from app.services.transcription import transcribe
 from app.services.analysis import classify, summarize, analyze_transcript
@@ -168,7 +132,7 @@ async def api_normalize(path: str = Form(...)):
             
         duration = get_duration(final_mp3)
         print(f"✅ Normalized & Compressed: {final_mp3}, duration: {duration}")
-        return {"success": True, "path": final_mp3, "duration": duration}
+        return {"success": True, "path": final_mp3, "duration": duration, "originalPath": path}
     except Exception as e:
         error_detail = traceback.format_exc()
         print(f"❌ Normalize Error:\n{error_detail}")

@@ -30,6 +30,36 @@ export default function NewSessionPage() {
             }
         };
         fetchUser();
+
+        // Listen for stop signal from hover toolbar
+        if (window.electronAPI && window.electronAPI.onTriggerStopRecording) {
+            window.electronAPI.onTriggerStopRecording(() => {
+                // We must use a ref or check state if needed, but handleStopRecording uses refs internally so it should work
+                handleStopRecording();
+            });
+        }
+
+        // Listen for pause signal from hover toolbar
+        if (window.electronAPI && window.electronAPI.onTriggerPauseRecording) {
+            window.electronAPI.onTriggerPauseRecording((event, isPaused) => {
+                if (mediaRecorderRef.current) {
+                    if (isPaused && mediaRecorderRef.current.state === 'recording') {
+                        mediaRecorderRef.current.pause();
+                        setStatus('Recording paused...');
+                    } else if (!isPaused && mediaRecorderRef.current.state === 'paused') {
+                        mediaRecorderRef.current.resume();
+                        setStatus('Recording screen and audio...');
+                    }
+                }
+            });
+        }
+
+        return () => {
+            if (window.electronAPI) {
+                if (window.electronAPI.removeTriggerStopRecordingListener) window.electronAPI.removeTriggerStopRecordingListener();
+                if (window.electronAPI.removeTriggerPauseRecordingListener) window.electronAPI.removeTriggerPauseRecordingListener();
+            }
+        };
     }, []);
 
     const getInitials = (name) => {
@@ -228,59 +258,137 @@ export default function NewSessionPage() {
 
     const handleStartRecording = async () => {
         try {
-            // 1. Setup MediaRecorder for High-Quality Audio Capture (Backend Processing)
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
+            setStatus('Requesting screen and audio permissions...');
+
+            let screenStream;
+            try {
+                console.log('🎬 Attempting getDisplayMedia (Full Features)...');
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true,
+                    audio: true
+                });
+            } catch (err) {
+                console.warn('⚠️ Full capture failed, trying video only...', err.name, err.message);
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { frameRate: { ideal: 30 } }
+                    });
+                } catch (err2) {
+                    console.error('❌ All display capture attempts failed!', err2);
+                    throw err2;
+                }
+            }
+
+            console.log('🎤 Requesting mic stream...');
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            const tracks = [...screenStream.getVideoTracks()];
+
+            console.log('🔊 Merging audio tracks...');
+            let audioCtx;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const dest = audioCtx.createMediaStreamDestination();
+
+                const micSource = audioCtx.createMediaStreamSource(micStream);
+                micSource.connect(dest);
+
+                if (screenStream.getAudioTracks().length > 0) {
+                    const systemSource = audioCtx.createMediaStreamSource(screenStream);
+                    systemSource.connect(dest);
+                }
+
+                tracks.push(...dest.stream.getAudioTracks());
+            } catch (aErr) {
+                console.warn('⚠️ AudioContext failed, using mic tracks directly:', aErr);
+                tracks.push(...micStream.getAudioTracks());
+            }
+
+            const combinedStream = new MediaStream(tracks);
+
+            // Comprehensive mime-type check
+            const types = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+            const mimeType = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+            console.log('📹 MimeType found:', mimeType);
+            const mediaRecorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : {});
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) audioChunksRef.current.push(event.data);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
             };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                const buffer = await audioBlob.arrayBuffer();
-                setStatus('Saving recording byte-stream...');
+                console.log('⏹️ Processing recorded chunks:', audioChunksRef.current.length);
+                const blob = new Blob(audioChunksRef.current, { type: mimeType || 'video/webm' });
+                const buffer = await blob.arrayBuffer();
+                setStatus('Saving screen recording...');
 
+                const timestamp = Date.now();
                 const saveResult = await window.electronAPI.saveTempAudio(buffer);
                 if (saveResult.success) {
-                    setStatus('Verifying and persisting recording...');
-
-                    // Call a helper to ensure the file exists and is copied to permanent storage
+                    setStatus('Verifying and persisting...');
                     try {
                         const persistResult = await window.electronAPI.persistRecording(saveResult.path);
                         if (persistResult.success) {
-                            await processFile(persistResult.path, `Live_${Date.now()}`);
+                            await processFile(persistResult.path, `Live_ScreenRec_${timestamp}.webm`);
                         } else {
                             throw new Error(persistResult.error);
                         }
                     } catch (pErr) {
-                        console.error('Persistence failed:', pErr);
-                        setStatus('Failed to save high-quality recording');
+                        console.error('❌ Persistence Error:', pErr);
+                        setStatus('Save failed');
                         setIsProcessing(false);
                     }
                 } else {
-                    setStatus('Failed to save temporary recording');
+                    setStatus('Temp save failed');
                     setIsProcessing(false);
                 }
-                stream.getTracks().forEach(track => track.stop());
+
+                // Cleanup
+                [screenStream, micStream, combinedStream].forEach(s => s && s.getTracks().forEach(t => t.stop()));
+                if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
             };
 
             mediaRecorder.start();
             setIsRecording(true);
-            setLiveTranscript(''); // Logic for transcript display removed per user spec
-            setStatus('Recording meeting audio...');
+
+            // Show Hover Toolbar!
+            if (window.electronAPI && window.electronAPI.showToolbar) {
+                window.electronAPI.showToolbar();
+            }
+
+            setLiveTranscript('');
+            setStatus('Recording screen and audio...');
+
+            screenStream.getVideoTracks()[0].onended = () => {
+                if (isRecording) handleStopRecording();
+            };
+
         } catch (err) {
-            console.error('Mic access denied:', err);
-            showToast('Could not access microphone. Please check permissions.', 'error');
+            console.error('❌ Recording initialization failed:', err);
+            showToast(`Error: ${err.message || 'Access denied'}`, 'error');
+            setIsProcessing(false);
+            setStatus('');
         }
     };
 
     const handleStopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current) {
+            if (mediaRecorderRef.current.state !== 'inactive') {
+                mediaRecorderRef.current.stop();
+            }
             setIsRecording(false);
+
+            // Hide Hover Toolbar!
+            if (window.electronAPI && window.electronAPI.hideToolbar) {
+                window.electronAPI.hideToolbar();
+            }
+            if (window.electronAPI && window.electronAPI.hideDrawingOverlay) {
+                window.electronAPI.hideDrawingOverlay();
+            }
+
             setIsProcessing(true);
             setStatus('Finishing recording...');
         }

@@ -3,7 +3,28 @@ import sys
 from pathlib import Path
 
 def get_binary_paths():
-    root_dir = Path(__file__).resolve().parents[3]
+    # Strategy 1: Look around the current working directory (most common in Electron)
+    cwd = Path.cwd()
+    root_dir = None
+    
+    for p in [cwd, cwd.parent]:
+        if (p / "package.json").exists() or (p / "node_modules").exists():
+            root_dir = p
+            break
+            
+    # Strategy 2: Look up from this file
+    if not root_dir:
+        current_path = Path(__file__).resolve()
+        temp_dir = current_path.parent
+        for _ in range(5):
+            if (temp_dir / "package.json").exists() or (temp_dir / "node_modules").exists():
+                root_dir = temp_dir
+                break
+            temp_dir = temp_dir.parent
+    
+    # Strategy 3: Fallback to hardcoded hierarchy
+    if not root_dir:
+        root_dir = Path(__file__).resolve().parents[3]
 
     # Default to system-installed binaries
     ffmpeg_cmd = "ffmpeg"

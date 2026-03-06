@@ -486,10 +486,10 @@ export default function ChatPage() {
 
                 <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-[#020402] via-[#020402]/95 to-transparent pt-32 pb-10 px-4 md:px-12 z-20">
                     <div className="max-w-4xl mx-auto flex flex-col gap-4">
-                        <div className={`relative flex items-end gap-4 bg-white/10 backdrop-blur-3xl rounded-[2.8rem] p-4 shadow-2xl transition-all border border-white/10 focus-within:border-primary/40 group ${!currentSession ? 'opacity-20 pointer-events-none' : ''}`}>
+                        <div className={`relative flex items-end gap-3 bg-white/10 backdrop-blur-3xl rounded-[2rem] p-2 pl-2 shadow-2xl transition-all border border-white/10 focus-within:border-primary/40 group ${!currentSession ? 'opacity-20 pointer-events-none' : ''}`}>
                             <textarea
-                                className="w-full bg-transparent border-none text-white placeholder-white/20 focus:ring-0 resize-none py-3 max-h-40 text-sm md:text-base outline-none px-5 scrollbar-hide font-medium"
-                                placeholder={currentSession ? `Ask about "${formatTitle(currentSession.title)}"...` : "Choose a session to begin analysis."}
+                                className="w-full bg-transparent border-none text-white placeholder-white/20 focus:ring-0 resize-none py-2.5 max-h-32 text-sm outline-none px-4 scrollbar-hide font-medium"
+                                placeholder={currentSession ? "Ask anything..." : "Choose a session to begin analysis."}
                                 rows="1"
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
@@ -502,10 +502,10 @@ export default function ChatPage() {
                             ></textarea>
                             <button
                                 onClick={handleSendMessage}
-                                className="size-14 rounded-[1.8rem] bg-primary text-black hover:scale-110 active:scale-95 transition-all shadow-xl shadow-primary/20 shrink-0 flex items-center justify-center group/send disabled:opacity-40 disabled:cursor-not-allowed disabled:grayscale"
+                                className="size-10 rounded-full bg-primary text-black hover:scale-110 active:scale-95 transition-all shadow-xl shadow-primary/20 shrink-0 flex items-center justify-center group/send disabled:opacity-40 disabled:cursor-not-allowed disabled:grayscale"
                                 disabled={isProcessing || !input.trim() || !currentSession}
                             >
-                                <span className="material-symbols-outlined filled text-[28px] group-hover/send:translate-y-[-2px] transition-transform">arrow_upward</span>
+                                <span className="material-symbols-outlined filled text-[20px] group-hover/send:translate-y-[-2px] transition-transform">arrow_upward</span>
                             </button>
                         </div>
                         <p className="text-center text-[10px] font-black text-white/10 uppercase tracking-[0.5em] select-none">Context Grounded AI • Groq Llama 3.3 Infrastructure</p>

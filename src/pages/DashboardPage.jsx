@@ -1,16 +1,19 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Logo from '../components/Logo';
+import ConfirmModal from '../components/ConfirmModal';
 import BackButton from '../components/BackButton';
 
 export default function DashboardPage() {
+    const navigate = useNavigate();
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [userName, setUserName] = useState('Guest');
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('newest');
     const [isSortOpen, setIsSortOpen] = useState(false);
+    const [sessionToDelete, setSessionToDelete] = useState(null);
 
     const getInitials = (name) => {
         if (!name || name === 'Guest') return 'G';
@@ -32,20 +35,14 @@ export default function DashboardPage() {
                     if (userResult.success) {
                         setUserName(userResult.user.name);
                     }
+                    setLoading(false);
                 } else {
-                    // Guest user: Fetch from localStorage
-                    console.log('Running in Guest Mode - fetching from localStorage');
-                    setUserName('Guest');
-                    try {
-                        const localSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
-                        setSessions(localSessions);
-                    } catch (e) {
-                        console.error('Failed to parse guest sessions:', e);
-                        setSessions([]);
-                    }
+                    // Redirect to Guest Dashboard
+                    navigate('/guest');
                 }
+            } else {
+                setLoading(false);
             }
-            setLoading(false);
         };
         fetchSessionsAndUser();
     }, []);
@@ -62,6 +59,27 @@ export default function DashboardPage() {
             if (sortBy === 'az') return a.title.localeCompare(b.title);
             return 0;
         });
+
+    const confirmDelete = async () => {
+        if (!sessionToDelete) return;
+
+        if (window.electronAPI) {
+            const userId = await window.electronAPI.getActiveId();
+            if (userId) {
+                const result = await window.electronAPI.deleteSession(sessionToDelete.id);
+                if (result.success) {
+                    setSessions(prev => prev.filter(s => s.id !== sessionToDelete.id));
+                }
+            } else {
+                // Guest delete fallback (shouldn't really hit here due to redirect, but safe)
+                const guestSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
+                const updated = guestSessions.filter(s => s.id !== sessionToDelete.id);
+                localStorage.setItem('guestSessions', JSON.stringify(updated));
+                setSessions(updated);
+            }
+        }
+        setSessionToDelete(null);
+    };
 
     return (
         <div className="flex h-screen w-full bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden">
@@ -224,43 +242,68 @@ export default function DashboardPage() {
                                 // Sanitize title for display
                                 const displayTitle = session.title ? session.title.replace(/^(compressed_|vid_\d+_)+/g, '') : 'Untitled Meeting';
 
+                                const handleDelete = (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setSessionToDelete({ id: session.id, title: displayTitle });
+                                };
+
                                 return (
-                                    <Link key={session.id} to="/transcript" state={session} className="group flex flex-col sm:flex-row gap-4 rounded-2xl bg-surface-dark p-4 border border-white/5 hover:border-primary/20 transition-all shadow-sm">
-                                        <div className="w-full sm:w-32 aspect-video sm:aspect-square rounded-xl bg-cover bg-center shrink-0 relative overflow-hidden bg-white/5 flex items-center justify-center">
-                                            {session.visuals && session.visuals.length > 0 ? (
-                                                <img
-                                                    src={`media://${session.visuals[0].path}`}
-                                                    className="w-full h-full object-cover"
-                                                    alt="Meeting Preview"
-                                                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                                                />
-                                            ) : null}
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                                                <span className="material-symbols-outlined text-white/50 text-[32px]">
-                                                    {session.source_type === 'link' ? 'link' : (session.source_type === 'recording' ? 'mic' : 'upload_file')}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-col justify-between flex-1 py-0.5">
-                                            <div>
-                                                <div className="flex justify-between items-start mb-1 gap-2">
-                                                    <h4 className="text-white text-base font-bold leading-tight line-clamp-1 group-hover:text-primary transition-colors">{displayTitle}</h4>
-                                                    <div className="bg-primary/10 text-primary text-[9px] uppercase font-bold px-2 py-0.5 rounded-full shrink-0 border border-primary/20">{session.classification || 'General'}</div>
-                                                </div>
-                                                <p className="text-white/40 text-xs mb-3">{new Date(session.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex-1 rounded-full h-8 flex items-center justify-center bg-white/5 group-hover:bg-primary group-hover:text-background-dark text-white text-xs font-bold transition-all border border-white/5">
-                                                    View Analysis Details
+                                    <div key={session.id} className="relative group">
+                                        <Link to="/transcript" state={session} className="flex flex-col sm:flex-row gap-4 rounded-2xl bg-surface-dark p-4 border border-white/5 hover:border-primary/20 transition-all shadow-sm">
+                                            <div className="w-full sm:w-32 aspect-video sm:aspect-square rounded-xl bg-cover bg-center shrink-0 relative overflow-hidden bg-white/5 flex items-center justify-center">
+                                                {session.visuals && session.visuals.length > 0 ? (
+                                                    <img
+                                                        src={`media://local?path=${encodeURIComponent(session.visuals[0].path)}`}
+                                                        className="w-full h-full object-cover"
+                                                        alt="Meeting Preview"
+                                                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                    />
+                                                ) : null}
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                                                    <span className="material-symbols-outlined text-white/50 text-[32px]">
+                                                        {session.source_type === 'link' ? 'link' : (session.source_type === 'recording' ? 'mic' : 'upload_file')}
+                                                    </span>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </Link>
+                                            <div className="flex flex-col justify-between flex-1 min-w-0 py-0.5">
+                                                <div className="min-w-0">
+                                                    <div className="flex justify-between items-start mb-1 gap-2 min-w-0">
+                                                        <h4 className="text-white text-[15px] sm:text-base font-bold leading-tight truncate flex-1 min-w-0 group-hover:text-primary transition-colors" title={displayTitle}>{displayTitle}</h4>
+                                                        <div className="flex flex-col items-end gap-2 shrink-0">
+                                                            <div className="bg-primary/10 text-primary text-[9px] uppercase font-bold px-2 py-0.5 rounded-full border border-primary/20">{session.classification || 'General'}</div>
+                                                            <button
+                                                                onClick={handleDelete}
+                                                                className="size-5 rounded-md bg-red-500/10 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white border border-red-500/20 transition-all active:scale-95 shadow-md"
+                                                                title="Delete Session"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[12px]">delete</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-white/40 text-xs mb-3">{new Date(session.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex-1 rounded-full h-8 flex items-center justify-center bg-white/5 group-hover:bg-primary group-hover:text-background-dark text-white text-xs font-bold transition-all border border-white/5">
+                                                        View Analysis Details
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
                                 );
                             })}
                         </div>
                     )}
                 </div>
+
+                <ConfirmModal
+                    isOpen={!!sessionToDelete}
+                    title="Delete Meeting"
+                    message={sessionToDelete ? `Are you sure you want to delete "${sessionToDelete.title}"? This cannot be undone.` : ''}
+                    onConfirm={confirmDelete}
+                    onCancel={() => setSessionToDelete(null)}
+                />
             </main>
         </div>
     );

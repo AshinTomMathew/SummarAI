@@ -46,6 +46,7 @@ export default function TranscriptPage() {
     const [expandedView, setExpandedView] = useState(null); // 'summary' | 'transcript' | 'visuals' | null
     const [showMindMap, setShowMindMap] = useState(false);
     const [showGames, setShowGames] = useState(false);
+    const [selectedVisual, setSelectedVisual] = useState(null);
     const [copyStatus, setCopyStatus] = useState(null);
 
     const handleCopy = (text) => {
@@ -231,22 +232,30 @@ export default function TranscriptPage() {
                                     </div>
                                 </div>
 
-                                {/* View Visuals Button - Only show if visuals exist */}
-                                {sessionData.visuals && sessionData.visuals.length > 0 && (
+                                {/* View Visuals Button - Show if it's a video or has visuals */}
+                                {(sessionData.visuals?.length > 0 || (sessionData.source_path && (sessionData.source_path.toLowerCase().endsWith('.mp4') || sessionData.source_path.toLowerCase().endsWith('.webm')))) && (
                                     <button
-                                        onClick={() => setExpandedView('visuals')}
-                                        className="glass-card rounded-2xl p-4 shadow-lg flex items-center justify-between border border-white/5 hover:border-primary/30 transition-all group"
+                                        onClick={() => sessionData.visuals?.length > 0 ? setExpandedView('visuals') : showToast("Visuals are still processing or not found.", "info")}
+                                        className={`glass-card rounded-2xl p-4 shadow-lg flex items-center justify-between border border-white/5 transition-all group ${sessionData.visuals?.length > 0 ? 'hover:border-primary/30' : 'opacity-60 cursor-not-allowed'}`}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                                                <span className="material-symbols-outlined text-primary">collections</span>
+                                            <div className={`size-10 rounded-xl flex items-center justify-center transition-colors ${sessionData.visuals?.length > 0 ? 'bg-primary/10 group-hover:bg-primary/20' : 'bg-white/5'}`}>
+                                                <span className={`material-symbols-outlined ${sessionData.visuals?.length > 0 ? 'text-primary' : 'text-white/30'}`}>
+                                                    {sessionData.visuals?.length > 0 ? 'collections' : 'pending_actions'}
+                                                </span>
                                             </div>
-                                            <div className="flex flex-col items-start">
-                                                <h3 className="text-slate-900 dark:text-white font-bold text-sm">View Extracted Frames</h3>
-                                                <p className="text-xs text-text-muted">{sessionData.visuals.length} visual{sessionData.visuals.length !== 1 ? 's' : ''} captured</p>
+                                            <div className="flex flex-col items-start text-left">
+                                                <h3 className="text-slate-900 dark:text-white font-bold text-sm">
+                                                    {sessionData.visuals?.length > 0 ? 'View Extracted Frames' : 'Visual Extraction'}
+                                                </h3>
+                                                <p className="text-xs text-text-muted">
+                                                    {sessionData.visuals?.length > 0
+                                                        ? `${sessionData.visuals.length} visual${sessionData.visuals.length !== 1 ? 's' : ''} captured`
+                                                        : 'Processing requested visuals...'}
+                                                </p>
                                             </div>
                                         </div>
-                                        <span className="material-symbols-outlined text-primary group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                                        <span className={`material-symbols-outlined text-primary transition-transform ${sessionData.visuals?.length > 0 ? 'group-hover:translate-x-1' : 'opacity-0'}`}>arrow_forward</span>
                                     </button>
                                 )}
                             </div>
@@ -347,7 +356,7 @@ export default function TranscriptPage() {
                                             {sessionData.visuals?.map((v, i) => (
                                                 <div key={i} className="group relative rounded-2xl overflow-hidden border border-white/10 bg-[#152211] hover:border-primary/30 transition-all">
                                                     <div className="aspect-video bg-[#2c4823] flex items-center justify-center relative">
-                                                        <img src={`media://${v.path}`} alt={`Frame ${i}`} className="w-full h-full object-cover" />
+                                                        <img src={`media://local?path=${encodeURIComponent(v.path)}`} alt={`Frame ${i}`} className="w-full h-full object-cover" />
                                                         <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-center items-center gap-4 p-6">
                                                             <div className="text-center">
                                                                 <p className="text-primary text-xs font-bold mb-1">Timestamp: {v.timestamp}</p>
@@ -355,7 +364,7 @@ export default function TranscriptPage() {
                                                             </div>
                                                             <div className="flex gap-3">
                                                                 <button
-                                                                    onClick={() => window.open(`media://${v.path}`)}
+                                                                    onClick={() => setSelectedVisual(v)}
                                                                     className="bg-white/20 hover:bg-white/40 text-white px-4 py-2 rounded-xl transition-colors flex items-center gap-2 text-xs font-bold"
                                                                 >
                                                                     <span className="material-symbols-outlined text-sm">visibility</span> View
@@ -364,7 +373,7 @@ export default function TranscriptPage() {
                                                                     <button
                                                                         onClick={() => {
                                                                             const link = document.createElement('a');
-                                                                            link.href = `media://${v.path}`;
+                                                                            link.href = `media://local?path=${encodeURIComponent(v.path)}`;
                                                                             link.download = `Frame_${v.timestamp.replace(':', '-')}.jpg`;
                                                                             link.click();
                                                                         }}
@@ -511,6 +520,29 @@ export default function TranscriptPage() {
                         summary={summary}
                         onClose={() => setShowGames(false)}
                     />
+                )}
+
+                {/* Visual Image Modal */}
+                {selectedVisual && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm shadow-2xl animate-in fade-in duration-200">
+                        <button
+                            className="absolute top-6 right-8 bg-white/10 hover:bg-white/30 text-white p-3 rounded-full transition-colors active:scale-95 z-50 flex items-center justify-center border border-white/20"
+                            onClick={() => setSelectedVisual(null)}
+                        >
+                            <span className="material-symbols-outlined text-2xl">close</span>
+                        </button>
+                        <div className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center">
+                            <img
+                                src={`media://local?path=${encodeURIComponent(selectedVisual.path)}`}
+                                alt="Visual full view"
+                                className="max-w-full max-h-[85vh] rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10"
+                            />
+                            <div className="bg-black/60 px-6 py-3 rounded-xl mt-4 border border-white/10 max-w-2xl text-center shadow-xl">
+                                <p className="text-primary font-bold text-sm mb-1">{selectedVisual.timestamp}</p>
+                                <p className="text-white text-sm line-clamp-3">{selectedVisual.text}</p>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </main>
         </div>

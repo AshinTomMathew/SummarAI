@@ -1,8 +1,6 @@
 import os
 import gc
-import torch
 import subprocess
-from faster_whisper import WhisperModel
 from groq import Groq
 from app.services.audio import compress_audio, get_duration
 import tempfile
@@ -16,8 +14,11 @@ _model = None
 def get_model():
     global _model
     if _model is None:
-        # Use 'tiny.en' for local fallback (fastest local)
-        model_size = "tiny.en"
+        import torch
+        from faster_whisper import WhisperModel
+        
+        # Use 'tiny' for local fallback (multilingual to support translation)
+        model_size = "tiny"
         
         # Check for GPU (NVIDIA CUDA)
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,22 +48,22 @@ def transcribe(audio_path: str) -> str:
     if duration < 600: # Under 10 mins
         for i, api_key in enumerate(groq_keys):
             try:
-                print(f"≡ƒÜÇ Using Groq Cloud ({i+1}) for direct transcription...")
+                # Use translations.create to ensure English output regardless of audio language
+                print(f"🚀 Using Groq Cloud Translation ({i+1}) for English output...")
                 client = Groq(api_key=api_key)
                 with open(audio_path, "rb") as file:
-                    return client.audio.transcriptions.create(
+                    return client.audio.translations.create(
                         file=(os.path.basename(audio_path), file.read()),
-                        model="whisper-large-v3-turbo", 
+                        model="whisper-large-v3", 
                         response_format="text",
                     ).strip()
             except Exception as e:
                 print(f"⚠️ Groq key {i+1} failed: {e}")
                 continue
     else:
-        # CHUNKED PROCESSING: Split into 10-min parts to bypass the 7200 limit
-        print(f"📦 Long recording detected ({duration:.1f}s). Splitting into chunks to bypass 7200 limit...")
+        # CHUNKED PROCESSING: Split into 10-min parts and translate each
+        print(f"📦 Long recording detected ({duration:.1f}s). Splitting and translating to English...")
         try:
-            # We use ffmpeg to split quickly without loading into memory
             full_transcript = []
             chunk_size = 600 # 10 minutes
             for start in range(0, int(duration), chunk_size):
@@ -70,15 +71,15 @@ def transcribe(audio_path: str) -> str:
                 # Extract chunk
                 subprocess.run(['ffmpeg', '-y', '-ss', str(start), '-t', str(chunk_size), '-i', audio_path, '-acodec', 'libmp3lame', '-ar', '16000', str(chunk_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # Transcribe chunk using key rotation
+                # Translate chunk using key rotation
                 chunk_text = ""
                 for k_idx, api_key in enumerate(groq_keys):
                     try:
                         client = Groq(api_key=api_key)
                         with open(chunk_path, "rb") as f:
-                            chunk_text = client.audio.transcriptions.create(
+                            chunk_text = client.audio.translations.create(
                                 file=(f"chunk_{start}.mp3", f.read()),
-                                model="whisper-large-v3-turbo", 
+                                model="whisper-large-v3", 
                                 response_format="text",
                             ).strip()
                         break 
@@ -90,24 +91,25 @@ def transcribe(audio_path: str) -> str:
             if full_transcript:
                 return " ".join(full_transcript)
         except Exception as e:
-            print(f"⚠️ Chunked Groq failed: {e}. Falling back to local...")
+            print(f"⚠️ Chunked Groq translation failed: {e}. Falling back to local...")
 
     # 3. Local Fallback (Faster-Whisper) - ULTRA FAST OPTIMIZED
     try:
         gc.collect() 
         model = get_model()
-        print(f"🎤 Starting local transcription (ULTRA-FAST) for: {audio_path}")
+        print(f"🎤 Starting local transcription (TRANSLATE to English) for: {audio_path}")
         
         segments, info = model.transcribe(
             audio_path, 
+            task="translate", # DIRECTLY translate to English
             beam_size=1, 
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=300, speech_pad_ms=200),
-            initial_prompt="Meeting transcript.",
+            initial_prompt="Meeting transcript in English.",
             condition_on_previous_text=False
         )
         
         return " ".join([s.text for s in segments]).strip()
     except Exception as e:
-        print(f"❌ Transcription failed: {e}")
+        print(f"❌ Local translation failed: {e}")
         return "Transcription error occurred."

@@ -11,6 +11,8 @@ import ExportPage from './pages/ExportPage';
 import ProfilePage from './pages/ProfilePage';
 import GuestModePage from './pages/GuestModePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ToolbarPage from './pages/ToolbarPage';
+import DrawingPage from './pages/DrawingPage';
 
 function App() {
     return (
@@ -28,6 +30,8 @@ function App() {
                     <Route path="/export" element={<ExportPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/guest" element={<GuestModePage />} />
+                    <Route path="/toolbar" element={<ToolbarPage />} />
+                    <Route path="/drawing" element={<DrawingPage />} />
                 </Routes>
             </Router>
         </ToastProvider>

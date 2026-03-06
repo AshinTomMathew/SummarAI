@@ -9,6 +9,8 @@ import tempfile
 import sys
 import shutil
 import time
+from app.utils.paths import get_binary_paths
+from app.services.audio import get_duration
 
 # Auto-detect Tesseract on Windows
 if sys.platform == "win32":
@@ -28,16 +30,16 @@ if sys.platform == "win32":
     for p in possible_paths:
         if os.path.exists(p):
             pytesseract.pytesseract.tesseract_cmd = p
-            print(f"✅ Tesseract found at: {p}")
+            print(f"Tesseract found at: {p}")
             break
     else:
         # Check if in PATH
         tesseract_in_path = shutil.which("tesseract")
         if tesseract_in_path:
             pytesseract.pytesseract.tesseract_cmd = tesseract_in_path
-            print(f"✅ Tesseract found in PATH: {tesseract_in_path}")
+            print(f"Tesseract found in PATH: {tesseract_in_path}")
         else:
-            print("ℹ️ Tesseract OCR not found. Visual extraction will continue without text recognition.")
+            print("Tesseract OCR not found. Visual extraction will continue without text recognition.")
             print("   Images will still be extracted, but OCR text will be skipped.")
 
 def get_frame_difference(frame1, frame2):
@@ -62,119 +64,173 @@ def get_frame_difference(frame1, frame2):
         return 0
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 def extract_visuals(video_path: str) -> List[Dict]:
     """
     OFFLINE: Extracts keyframes using FFmpeg (ULTRA FAST) and performs OCR.
     SPEED OPTIMIZED: Uses FFmpeg to jump to specific timestamps.
     """
-    print(f"📸 Visual Extraction Request: {video_path}")
-    abs_video_path = os.path.abspath(video_path)
+    # Clean and normalize path
+    clean_path = video_path.strip().strip('"')
+    print(f"[VISUALS] Request: {clean_path}")
     
-    if not os.path.exists(abs_video_path):
-        print(f"⏭️ Visual extraction skipped: File not found at {abs_video_path}")
-        return []
+    video_p = Path(clean_path).resolve()
+    abs_video_path = str(video_p)
+    print(f"[VISUALS] DEBUG: Resolved path: {abs_video_path}")
+    
+    if not video_p.exists():
+        print(f"[VISUALS] Skipped: File not found at {abs_video_path}")
+        # Try a quick secondary check in case of OS character encoding oddities
+        if not os.path.exists(abs_video_path):
+             return []
+        print("[VISUALS] Found via os.path.exists fallback.")
 
-    # Verify if it's a video file by checking extension
-    ext = os.path.splitext(abs_video_path)[1].lower()
-    if ext not in ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv']:
-        print(f"⏭️ Visual extraction skipped: Audio-only file ({ext}). No video frames to extract.")
-        return []
+    import ffmpeg
+    from app.utils.paths import get_binary_paths
+    FFMPEG_CMD, FFPROBE_CMD = get_binary_paths()
+    print(f"DEBUG: Binaries -> FFMPEG: {FFMPEG_CMD}, FFPROBE: {FFPROBE_CMD}")
 
-    visuals_dir = Path(tempfile.gettempdir()) / "SummarAI" / "visuals"
+    try:
+        print(f"DEBUG: Probing video stream...")
+        probe = ffmpeg.probe(abs_video_path, cmd=FFPROBE_CMD)
+        video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+        if not video_streams:
+            print(f"[VISUALS] Skipped: No video stream found in {abs_video_path}")
+            return []
+        print(f"[VISUALS] Found {len(video_streams)} video stream(s).")
+    except Exception as e:
+        print(f"[VISUALS] Metadata probe failed: {e}")
+        # Fallback to extension check if probe fails
+        ext = os.path.splitext(abs_video_path)[1].lower()
+        if ext not in ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv']:
+            print(f"[VISUALS] Skipped: File extension {ext} not recognized.")
+            return []
+
+    visuals_dir = Path(tempfile.gettempdir()).resolve() / "SummarAI" / "visuals"
     visuals_dir.mkdir(parents=True, exist_ok=True)
     
-    session_id = f"vid_{int(time.time())}"
-    session_dir = visuals_dir / session_id
+    import uuid
+    session_id = f"vid_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    session_dir = (visuals_dir / session_id).resolve()
     session_dir.mkdir(parents=True, exist_ok=True)
-
-    results = []
     
-    try:
-        # Get duration using ffprobe or cv2
-        cap = cv2.VideoCapture(abs_video_path)
-        if not cap.isOpened():
-            print("⏭️ Visual extraction skipped: Video file is corrupted or unsupported format.")
-            return []
-        
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if fps <= 0: fps = 30
-        duration_sec = total_frames / fps
-        cap.release()
+    print(f"[VISUALS] Session directory: {session_dir}")
 
-        # Decide timestamps to capture (max 15 slides for faster processing, evenly spaced across the WHOLE video)
-        num_slides = 15
-        if duration_sec < 60:
-            num_slides = 5
-        elif duration_sec < 300:
-            num_slides = 10
+    def _process_timestamp(ts):
+        """Helper to extract and OCR a single frame."""
+        mm = int(ts // 60)
+        ss = int(ts % 60)
+        filename = f"slide_{mm:02d}_{ss:02d}.jpg"
+        frame_path = str(session_dir / filename)
+        
+        # Get FFmpeg path
+        ffmpeg_bin, _ = get_binary_paths()
+        
+        # Seek and extract frame (Ultra-fast seeks)
+        cmd = [
+            ffmpeg_bin, '-y', '-ss', f"{ts:.2f}", '-i', abs_video_path,
+            '-frames:v', '1', '-q:v', '2', 
+            '-vf', 'scale=1920:-1',
+            frame_path
+        ]
+        
+        try:
+            # Process with a longer timeout or none for large frames
+            print(f"🎬 [VISUALS] Extracting frame at {ts}s to: {frame_path}")
+            # Use shell=True only on windows if needed, but absolute path is better
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+            # Speed optimized: 1280px width is enough for most UIs and faster to extract/OCR
+            res = subprocess.run(
+                [
+                    ffmpeg_bin, '-y', '-ss', f"{ts:.2f}", '-i', abs_video_path,
+                    '-frames:v', '1', '-q:v', '4', 
+                    '-vf', 'scale=1280:-1',
+                    frame_path
+                ], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE, 
+                text=True,
+                startupinfo=startupinfo
+            )
+            
+            if res.returncode != 0:
+                print(f"[VISUALS] FFmpeg error at {ts}s: {res.stderr}")
+            else:
+                print(f"[VISUALS] Frame extracted at {ts}s")
+            
+            if os.path.exists(frame_path):
+                # Perform OCR
+                clean_text = ""
+                ocr_status = "Skipped"
+                
+                if getattr(pytesseract.pytesseract, 'tesseract_cmd', None):
+                    try:
+                        img = Image.open(frame_path)
+                        text = pytesseract.image_to_string(img, config='--psm 3 --oem 1')
+                        clean_text = text.strip()
+                        ocr_status = "Success" if clean_text else "No Text Found"
+                    except Exception:
+                        ocr_status = "Failed"
+                
+                timestamp_str = f"{mm:02d}:{ss:02d}"
+                return {
+                    "timestamp": timestamp_str,
+                    "text": clean_text if clean_text else f"[Visual Context at {timestamp_str}]",
+                    "path": frame_path,
+                    "ocr_status": ocr_status
+                }
+        except Exception as e:
+            print(f"Extraction failed for {ts}s: {e}")
+        return None
+
+    try:
+        duration_sec = get_duration(abs_video_path)
+        print(f"Video Duration determined: {duration_sec}s")
+        
+        if duration_sec <= 0:
+            print(f"Could not determine video duration for {abs_video_path}")
+            return []
+
+        # Calculate capture points
+        num_slides = 12
+        if duration_sec < 60: num_slides = 4
+        elif duration_sec < 300: num_slides = 8
             
         interval = duration_sec / (num_slides + 1)
         timestamps = [interval * i for i in range(1, num_slides + 1)]
+        
+        print(f"Planned extraction points: {[f'{t:.2f}s' for t in timestamps]}")
 
-        print(f"🕒 Extracting {len(timestamps)} frames at 1080p resolution...")
+        print(f"Parallel extracting {len(timestamps)} frames at 1080p...")
 
-        for ts in timestamps:
-            mm = int(ts // 60)
-            ss = int(ts % 60)
-            filename = f"slide_{mm:02d}_{ss:02d}.jpg"
-            frame_path = str(session_dir / filename)
+        # Run extraction in parallel (up to 8 tasks)
+        print(f"[VISUALS] Starting parallel extraction of {len(timestamps)} frames...")
+        with ThreadPoolExecutor(max_workers=min(len(timestamps), 8)) as executor:
+            task_results = list(executor.map(_process_timestamp, timestamps))
             
-            # ULTRA-RES extraction using FFmpeg seeking
-            # Scale to 1920 (1080p width) for premium quality slides
-            cmd = [
-                'ffmpeg', '-y', '-ss', f"{ts:.2f}", '-i', abs_video_path,
-                '-frames:v', '1', '-q:v', '2', 
-                '-vf', 'scale=1920:-1',
-                frame_path
-            ]
-            
-            try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-                
-                if os.path.exists(frame_path):
-                    # Perform OCR
-                    clean_text = ""
-                    ocr_status = "Skipped"
-                    
-                    # Only attempt OCR if Tesseract is configured
-                    if getattr(pytesseract.pytesseract, 'tesseract_cmd', None):
-                        try:
-                            # Load with PIL for Tesseract
-                            img = Image.open(frame_path)
-                            text = pytesseract.image_to_string(img, config='--psm 3 --oem 1')
-                            clean_text = text.strip()
-                            ocr_status = "Success" if clean_text else "No Text Found"
-                        except PermissionError:
-                            ocr_status = "Permission Denied"
-                        except OSError as e:
-                            if "740" in str(e) or "elevation" in str(e).lower():
-                                ocr_status = "Permission Denied"
-                            else:
-                                ocr_status = "Failed"
-                        except Exception as e:
-                            ocr_status = "Failed"
-                    
-                    timestamp_str = f"{mm:02d}:{ss:02d}"
-                    final_text = clean_text if clean_text else f"[Visual Context at {timestamp_str}]"
-                    
-                    results.append({
-                        "timestamp": timestamp_str,
-                        "text": final_text,
-                        "path": frame_path,
-                        "ocr_status": ocr_status
-                    })
-            except Exception as e:
-                print(f"⚠️ FFmpeg frame extraction failed at {ts}s: {e}")
-                continue
+        # Filter None values, fix paths for URL compatibility, and sort by time
+        results = []
+        for r in task_results:
+            if r:
+                # Normalize path to use forward slashes for the frontend media:// protocol
+                # CRITICAL: Ensure we keep a leading forward slash if it starts with drive letter
+                # Actually, media://C:/Users... is fine if C: is treated as host.
+                # But let's be safe and consistent.
+                r['path'] = r['path'].replace('\\', '/')
+                results.append(r)
+        
+        results.sort(key=lambda x: x['timestamp'])
 
-        if len(results) > 0:
-            print(f"✅ Visual Extraction Complete: {len(results)} frames extracted.")
-        else:
-            print(f"⏭️ Visual extraction skipped: No frames could be extracted from this video.")
+        print(f"[VISUALS] Extraction Complete: {len(results)}/{len(timestamps)} frames succeeded.")
+        if not results:
+            print("[VISUALS] WARNING: No visuals were successfully extracted!")
         return results
 
     except Exception as e:
-        print(f"❌ Visual Extraction Fatal Error: {e}")
+        print(f"Visual Extraction Fatal Error: {e}")
         return []

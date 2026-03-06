@@ -1,12 +1,12 @@
-import { app, BrowserWindow, ipcMain, protocol, shell, net } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, shell, net, desktopCapturer, session, screen } from 'electron';
+import { pathToFileURL, fileURLToPath } from 'url';
 
 // Register privileged schemes strictly before app.whenReady()
 protocol.registerSchemesAsPrivileged([
-    { scheme: 'media', privileges: { secure: true, standard: true, stream: true, bypassCSP: false, supportFetchAPI: true } }
+    { scheme: 'media', privileges: { secure: true, standard: true, stream: true, bypassCSP: true, supportFetchAPI: true } }
 ]);
 import { spawn } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { initDatabase, query as dbQuery } from './database.js';
 import { generateSummary, classifyContent } from './ai/summarizer.js';
@@ -18,6 +18,8 @@ import { extractVisuals } from './ai/visuals.js';
 import { chatQuery } from './ai/chatbot.js';
 import { processAudio, extractAudioFromVideo, getDuration } from './ai/recorder.js';
 import fs from 'fs';
+import os from 'os';
+import crypto from 'crypto';
 
 // Define __dirname and __filename for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -90,6 +92,32 @@ ipcMain.handle('db-get-chat-history', async (event, { sessionId, userId }) => {
 
 let mainWindow;
 let activeUserId = null; // Track currently logged in user
+
+function getSessionFilePath() {
+    return path.join(app.getPath('userData'), 'session.json');
+}
+
+function saveSessionState(userId) {
+    try {
+        fs.writeFileSync(getSessionFilePath(), JSON.stringify({ activeUserId: userId }));
+    } catch (e) {
+        console.error('Failed to save session state:', e);
+    }
+}
+
+function loadSessionState() {
+    try {
+        const p = getSessionFilePath();
+        if (fs.existsSync(p)) {
+            const data = JSON.parse(fs.readFileSync(p));
+            return data.activeUserId || null;
+        }
+    } catch (e) {
+        console.error('Failed to load session state:', e);
+    }
+    return null;
+}
+
 let pyProcess = null; // Track backend process globaly
 let isBackendReady = false; // Flag to track backend health
 let isSpawning = false; // Flag to prevent multiple spawn attempts
@@ -246,12 +274,28 @@ async function createWindow() {
                     "default-src 'self' 'unsafe-inline' 'unsafe-eval' media: data: blob: https://lh3.googleusercontent.com https://www.gstatic.com https://generativelanguage.googleapis.com; " +
                     "img-src 'self' media: data: blob: https://lh3.googleusercontent.com https://www.gstatic.com; " +
                     "media-src 'self' media: data: blob:; " +
-                    "connect-src 'self' http://127.250.0.0:9494; " +
+                    "connect-src 'self' http://127.0.0.1:1001 http://localhost:1001 http://localhost:5173; " +
                     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
                     "font-src 'self' data: https://fonts.gstatic.com;"
                 ]
             }
         });
+    });
+
+    // Handle permissions
+    mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+        const allowedPermissions = ['media', 'audioCapture', 'videoCapture', 'display-capture', 'notifications'];
+        if (allowedPermissions.includes(permission)) {
+            callback(true);
+        } else {
+            console.log(`🔒 Permission requested and denied: ${permission}`);
+            callback(false);
+        }
+    });
+
+    // Handle session-wide permissions (Alternative check for some Electron versions)
+    mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission, originatingOrigin, details) => {
+        return ['media', 'audioCapture', 'videoCapture', 'display-capture'].includes(permission);
     });
 
     // Initialize database
@@ -300,22 +344,104 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
-    // Register custom protocol for local media
-    // This allows loading files using media:// prefix securely
-    protocol.handle('media', (request) => {
-        const url = request.url.replace(/^media:\/{2,3}/, '');
-        try {
-            // Robustly decode path and ensure it's a valid local file path
-            const decodedPath = decodeURIComponent(url);
-            console.log(`📂 Media protocol request: ${decodedPath}`);
+    // Setup desktop capture for navigator.mediaDevices.getDisplayMedia
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+        desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+            // Pick the first available screen
+            callback({ video: sources[0], audio: 'loopback' });
+        }).catch(err => {
+            console.error('getSources error:', err);
+            callback({ video: null, audio: null });
+        });
+    });
 
-            // Return a proper file response
-            return net.fetch('file://' + decodedPath);
+    protocol.handle('media', async (request) => {
+        try {
+            // Safe path extraction using URL params to bypass Chromium's host-parsing quirks
+            let filePath = "";
+            try {
+                const urlObj = new URL(request.url);
+                if (urlObj.searchParams.has('path')) {
+                    filePath = urlObj.searchParams.get('path');
+                } else {
+                    let rawPath = request.url.replace(/^media:\/\/(local\/)?/i, '');
+                    filePath = decodeURIComponent(rawPath);
+                }
+            } catch (e) {
+                let rawPath = request.url.replace(/^media:\/\/(local\/)?/i, '');
+                filePath = decodeURIComponent(rawPath);
+            }
+
+            // Remove leading slashes if they exist before drive letter (e.g. /C:/path -> C:/path)
+            if (process.platform === 'win32') {
+                if (filePath.startsWith('/')) {
+                    filePath = filePath.substring(1);
+                }
+                // Standardize to backslashes for fs.readFileSync
+                filePath = path.normalize(filePath);
+            }
+
+            if (isDev) {
+                console.log(`📂 Media Protocol: [${request.url}] -> [${filePath}]`);
+            }
+
+            if (!fs.existsSync(filePath)) {
+                console.error(`❌ Media Protocol: File NOT FOUND at: "${filePath}"`);
+                return new Response('File not found', { status: 404 });
+            }
+
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeTypes = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp',
+                '.mp3': 'audio/mpeg',
+                '.mp4': 'video/mp4',
+                '.webm': 'video/webm'
+            };
+            const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+            try {
+                const data = fs.readFileSync(filePath);
+                return new Response(data, {
+                    status: 200,
+                    headers: {
+                        'Content-Type': contentType,
+                        'Access-Control-Allow-Origin': '*',
+                        'Cache-Control': 'no-cache',
+                        'Content-Length': data.length.toString()
+                    }
+                });
+            } catch (readErr) {
+                console.error(`❌ Media Protocol Read Error: ${readErr.message}`);
+                // Fallback attempt using net.fetch with file://
+                try {
+                    const fileUrl = pathToFileURL(filePath).toString();
+                    const response = await net.fetch(fileUrl);
+                    return new Response(response.body, {
+                        status: response.status,
+                        headers: {
+                            'Content-Type': contentType,
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
+                } catch (netErr) {
+                    console.error(`❌ Media Protocol Fallback Failed: ${netErr.message}`);
+                    return new Response('Read Error', { status: 500 });
+                }
+            }
         } catch (error) {
-            console.error('❌ Failed to handle media protocol:', error);
-            return new Response('File not found', { status: 404 });
+            console.error('❌ Media Protocol Fatal Exception:', error);
+            return new Response('Internal Protocol Error', { status: 500 });
         }
     });
+
+    // Load persisted session
+    activeUserId = loadSessionState();
+    console.log('🔵 Loaded session state. Active User ID:', activeUserId);
+
     createWindow();
     spawnPythonBackend();
     checkBackendHealth(); // Start health polling in background
@@ -351,6 +477,7 @@ ipcMain.handle('get-app-version', () => {
 ipcMain.handle('auth-set-session', (event, userId) => {
     console.log(`🔵 Session set for User ID: ${userId}`);
     activeUserId = userId;
+    saveSessionState(userId);
     return { success: true };
 });
 
@@ -372,6 +499,7 @@ ipcMain.handle('auth-get-session-user', async () => {
 ipcMain.handle('auth-logout', () => {
     console.log(`🔵 Logging out User ID: ${activeUserId}`);
     activeUserId = null;
+    saveSessionState(null);
     return { success: true };
 });
 
@@ -389,6 +517,132 @@ ipcMain.handle('auth-get-active-id', () => {
 ipcMain.handle('start-recording', async () => {
     // In a real app, this might trigger a specific ffmpeg stream or UI state
     return { success: true, message: 'Recording started' };
+});
+
+// -- Toolbar & Overlay System --
+let toolbarWindow = null;
+let drawingWindow = null;
+
+ipcMain.handle('show-toolbar', () => {
+    if (toolbarWindow) return;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width } = primaryDisplay.workAreaSize;
+
+    toolbarWindow = new BrowserWindow({
+        width: 300,
+        height: 50,
+        x: Math.round((width / 2) - 150),
+        y: 20,
+        transparent: true,
+        frame: false,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        resizable: false,
+        hasShadow: true,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.cjs'),
+        }
+    });
+
+    toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+    toolbarWindow.setMenu(null);
+
+    if (isDev) {
+        toolbarWindow.loadURL('http://localhost:5173/#/toolbar');
+    } else {
+        toolbarWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'toolbar' });
+    }
+});
+
+ipcMain.handle('hide-toolbar', () => {
+    if (toolbarWindow) {
+        toolbarWindow.close();
+        toolbarWindow = null;
+    }
+});
+
+ipcMain.handle('take-screenshot', async () => {
+    console.log("📸 Taking screenshot...");
+    try {
+        if (toolbarWindow) toolbarWindow.hide();
+        // Give time for UI to hide
+        await new Promise(r => setTimeout(r, 100));
+
+        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+        if (toolbarWindow) toolbarWindow.showInactive();
+
+        if (sources.length > 0) {
+            const buffer = sources[0].thumbnail.toPNG();
+            const filePath = path.join(os.homedir(), 'Desktop', `SummarAI_Snap_${crypto.randomBytes(3).toString('hex')}.png`);
+            fs.writeFileSync(filePath, buffer);
+            console.log("✅ Screenshot saved:", filePath);
+            return { success: true, path: filePath };
+        }
+        return { success: false, error: "No screen found" };
+    } catch (err) {
+        if (toolbarWindow) toolbarWindow.showInactive();
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('trigger-stop-recording-sender', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('trigger-stop-recording');
+    }
+});
+
+ipcMain.handle('trigger-pause-recording-sender', (event, isPaused) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('trigger-pause-recording', isPaused);
+    }
+});
+
+ipcMain.handle('show-drawing-overlay', () => {
+    if (drawingWindow) return;
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.size; // full screen including taskbars etc for drawing
+
+    drawingWindow = new BrowserWindow({
+        x: 0,
+        y: 0,
+        width,
+        height,
+        transparent: true,
+        frame: false,
+        alwaysOnTop: true, // Needs to be above everything except toolbar
+        skipTaskbar: true,
+        resizable: false,
+        hasShadow: false,
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.cjs'),
+        }
+    });
+
+    // Force toolbar higher
+    if (toolbarWindow) {
+        toolbarWindow.setAlwaysOnTop(true, "screen-saver");
+    }
+
+    drawingWindow.setMenu(null);
+    if (isDev) {
+        drawingWindow.loadURL('http://localhost:5173/#/drawing');
+    } else {
+        drawingWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'drawing' });
+    }
+
+    return { success: true };
+});
+
+ipcMain.handle('hide-drawing-overlay', () => {
+    if (drawingWindow) {
+        drawingWindow.close();
+        drawingWindow = null;
+    }
+    return { success: true };
 });
 
 async function waitForBackendReady(maxWaitMs = 30000) {
@@ -626,6 +880,7 @@ ipcMain.handle('db-login', async (event, { email, password }) => {
         }
 
         activeUserId = user.id; // Set session immediately
+        saveSessionState(activeUserId);
         console.log(`🔵 Login successful for: ${user.email}, activeUserId: ${activeUserId}`);
 
         return {
@@ -726,6 +981,20 @@ ipcMain.handle('db-update-visuals', async (event, { sessionId, visuals }) => {
     }
 });
 
+ipcMain.handle('db-delete-session', async (event, sessionId) => {
+    try {
+        console.log(`🗑️ Deleting session ${sessionId}...`);
+        // Use a transaction or multiple queries if you need to delete chat history too
+        await dbQuery('DELETE FROM `chat_history` WHERE `session_id` = ?', [sessionId]);
+        await dbQuery('DELETE FROM `sessions` WHERE `id` = ?', [sessionId]);
+        console.log('✅ Session and its chat history deleted successfully.');
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Failed to delete session:', error);
+        return { success: false, error: error.message };
+    }
+});
+
 ipcMain.handle('db-get-sessions', async (event, userId) => {
     try {
         // GUEST USER: Return empty list (No History)
@@ -792,6 +1061,7 @@ ipcMain.handle('db-google-login', async () => {
             }
 
             activeUserId = user.id; // Set session immediately
+            saveSessionState(activeUserId);
             console.log(`🔵 Google login successful for: ${user.email}, activeUserId: ${activeUserId}`);
             return { success: true, user };
         }

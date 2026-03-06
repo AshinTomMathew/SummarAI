@@ -1,11 +1,9 @@
 import os
 import json
-import torch
 import collections
 import traceback
 from groq import Groq
 from dotenv import load_dotenv
-from transformers import pipeline
 
 load_dotenv()
 
@@ -13,8 +11,8 @@ load_dotenv()
 _summarizer = None
 _classifier = None
 
-# Optimization: Set torch threads globally for better CPU performance
-torch.set_num_threads(4)
+# Optimization: Set torch threads globally for better CPU performance when initialized
+# (Handled inline during lazy loading now)
 
 # Summary Templates based on User Requirements (STRICT)
 SUMMARY_TEMPLATES = {
@@ -49,12 +47,20 @@ SUMMARY_TEMPLATES = {
 def get_summarizer():
     global _summarizer
     if _summarizer is None:
+        import torch
+        from transformers import pipeline
+        torch.set_num_threads(4)
+        print("Model: Loading fallback summarization pipeline...")
         _summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=-1)
     return _summarizer
 
 def get_classifier():
     global _classifier
     if _classifier is None:
+        import torch
+        from transformers import pipeline
+        torch.set_num_threads(4)
+        print("Model: Loading fallback classification pipeline...")
         _classifier = pipeline("zero-shot-classification", model="valhalla/distilbart-mnli-12-3", device=-1)
     return _classifier
 
@@ -89,7 +95,7 @@ def analyze_transcript(text: str) -> dict:
             
             # Re-implementing with full system prompt for safety
             system_prompt = """You are an AI content analysis engine.
-
+Everything you output MUST be in English, regardless of the language of the provided transcript.
 Your task has TWO STEPS and you must perform them in order.
 
 --------------------------------------------------
@@ -108,6 +114,7 @@ Categories:
 
 Rules:
 - Choose only ONE category
+- Everything must be in English
 - Do NOT explain the choice
 - Do NOT add extra text
 
@@ -115,7 +122,7 @@ Rules:
 STEP 2: CONTENT-AWARE SUMMARY GENERATION
 --------------------------------------------------
 
-Based on the classified category, generate a summary using the rules below.
+Based on the classified category, generate a summary in English using the rules below.
 
 Summary templates:
 
@@ -146,6 +153,7 @@ General:
 - Provide an exhaustive deep-dive summary covering every minor and major point with technical detail
 
 Rules:
+- THE OUTPUT MUST BE ENTIRELY IN ENGLISH
 - Be extremely thorough, exhaustive, and highly detailed
 - Provide a deep-dive analysis across multiple paragraphs
 - Use CLEAR CAPS HEADERS (e.g., SECTION TITLE) to organize different themes instead of symbols.
@@ -162,7 +170,7 @@ Return ONLY valid JSON in the following structure:
 
 {
   "category": "<one_of_the_categories>",
-  "summary": "<generated_summary_text>"
+  "summary": "<generated_summary_text_in_english>"
 }
 """
             chat_completion = client.chat.completions.create(

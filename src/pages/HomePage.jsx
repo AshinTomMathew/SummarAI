@@ -1,7 +1,22 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import Logo from '../components/Logo';
 
 export default function HomePage() {
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const checkSession = async () => {
+            if (window.electronAPI) {
+                const userId = await window.electronAPI.getActiveId();
+                if (userId) {
+                    navigate('/dashboard', { replace: true });
+                }
+            }
+        };
+        checkSession();
+    }, [navigate]);
+
     return (
         <div className="relative flex min-h-screen w-full flex-col group/design-root overflow-y-auto">
             <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-gray-200 dark:border-b-[#2c4823] px-6 py-4 lg:px-10 bg-background-light dark:bg-background-dark z-50">

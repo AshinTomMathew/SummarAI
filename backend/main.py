@@ -14,6 +14,29 @@ import json
 import re
 import time
 import os
+import signal
+from sqlalchemy import text
+import psutil
+import socket
+
+def kill_existing_process_on_port(port):
+    """Kills any process currently listening on the specified port."""
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            for conn in proc.connections(kind='inet'):
+                if conn.laddr.port == port:
+                    print(f"Port {port} is occupied by {proc.info['name']} (PID: {proc.info['pid']}). Killing it...")
+                    proc.send_signal(signal.SIGTERM) if os.name != 'nt' else proc.terminate()
+                    # Wait a moment for the OS to release the socket
+                    time.sleep(1)
+                    return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return False
+
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
 
 # Force UTF-8 for stdout/stderr to handle emojis on Windows
 if sys.platform == "win32":
@@ -71,10 +94,10 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize DB on startup
-    print("🚀 Backend Startup: Initializing services and DB...")
+    print("Backend Startup: Initializing services and DB...")
     init_db()
     yield
-    print("🛑 Backend Shutdown: Cleaning up...")
+    print("Backend Shutdown: Cleaning up...")
 
 app = FastAPI(title="Summarai AI Backend", lifespan=lifespan)
 
@@ -383,7 +406,18 @@ async def export_report(
         print(f"❌ Export Error: {e}")
         return {"success": False, "error": str(e)}
 
+@app.get("/test-db")
+def test_db():
+    from database import SessionLocal
+    db = SessionLocal()
+    result = db.execute(text("SELECT * FROM users"))
+    data = [dict(row) for row in result]
+    return {"database_data": data}
+
 if __name__ == "__main__":
-    print("🚀 Main Entry Point: Starting Uvicorn...")
+    PORT = 1001
+    if is_port_in_use(PORT):
+        kill_existing_process_on_port(PORT)
+    print(f"Main Entry Point: Starting Uvicorn on port {PORT}...")
     # workers=1 and reload=False are CRITICAL for Electron integration
-    uvicorn.run(app, host="127.0.0.1", port=1001, reload=False, workers=1)
+    uvicorn.run(app, host="127.0.0.1", port=PORT, reload=False, workers=1)

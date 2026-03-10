@@ -8,7 +8,7 @@ protocol.registerSchemesAsPrivileged([
 import { spawn } from 'child_process';
 import path from 'path';
 import bcrypt from 'bcryptjs';
-import { initDatabase, query as dbQuery } from '../db/database.js';
+import { initDatabase, query as dbQuery } from '../db/index.js';
 import { generateSummary, classifyContent } from './ai/summarizer.js';
 import { createPDFReport, createDocxReport } from './ai/export.js';
 import { googleSignIn } from './auth.js';

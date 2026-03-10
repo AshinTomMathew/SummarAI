@@ -10,11 +10,11 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vite frontend",
-    "build": "vite build frontend",
-    "preview": "vite preview frontend",
-    "electron:dev": "concurrently \"vite frontend\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "vite build frontend && electron-builder"
+    "dev": "cd frontend && npx tailwindcss -i src/index.css -o src/tailwind.css -c tailwind.config.js && vite --force",
+    "build": "cd frontend && npx tailwindcss -i src/index.css -o src/tailwind.css -c tailwind.config.js -m && vite build",
+    "preview": "cd frontend && vite preview",
+    "electron:dev": "concurrently \"cd frontend && npx tailwindcss -i src/index.css -o src/tailwind.css -c tailwind.config.js -w\" \"cd frontend && vite --force\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "cd frontend && npx tailwindcss -i src/index.css -o src/tailwind.css -c tailwind.config.js -m && vite build && cd .. && electron-builder"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -32,6 +32,7 @@
     "node-fetch": "^3.3.2",
     "onnxruntime-node": "^1.23.2",
     "pdfkit": "^0.13.0",
+    "pg": "^8.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",

@@ -17,3 +17,6 @@ pillow
 opencv-python
 groq
 google-generativeai
+pymysql
+psycopg2-binary
+psutil

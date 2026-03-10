@@ -2,6 +2,9 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, crea
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import datetime
+import os
+import sys
+from dotenv import load_dotenv
 
 Base = declarative_base()
 
@@ -25,10 +28,10 @@ class Session(Base):
     source_type = Column(String(50)) # upload, link, recording
     source_path = Column(String(255))
 
-# SQLite for local persistence as requested
-DATABASE_URL = "sqlite:///../db/summarai.db"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Get engine and session from central database.py
+# Add parent dir to path to ensure we can import database.py
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from database import engine, SessionLocal
 
 def init_db():
     Base.metadata.create_all(bind=engine)

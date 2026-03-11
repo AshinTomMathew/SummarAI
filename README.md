@@ -114,26 +114,29 @@ NODE_ENV=development
 
 ### 3. Build & Run locally
 
-> [!NOTE] 
-> Install dependencies in both environments before running concurrent builds.
+> [!IMPORTANT]
+> **SummarAI 1.0** now uses a hybrid cloud architecture. 
+> - **Backend**: Hosted on [Render](https://summarai-18nu.onrender.com) (handles heavy AI logic).
+> - **Database**: Hosted on [Supabase](https://supabase.com) (high-availability Postgres).
+> - **Landing Page**: Hosted on [Vercel](https://summarai-landing.vercel.app).
 
-**A. Install React UI Modules**
+**A. Developer Quick Start**
 ```bash
 npm install
-```
-
-**B. Install Python Pipeline**
-```bash
-cd backend
-pip install -r requirements.txt
-cd ..
-```
-
-**C. Fire Up Dev Environment**
-*(Launches simultaneously: Vite Server + React HMR + Electron + Python Worker)*
-```bash
 npm run electron:dev
 ```
+
+**B. Production Build (Installer)**
+To generate a professional Windows `.exe` installer:
+```bash
+npm run electron:build
+```
+The installer will be generated in the `release/` directory.
+
+---
+
+## 🛡️ Privacy & Permissions
+SummarAI requires **Microphone** and **Screen Recording** permissions to function as a meeting assistant. For details on how we protect your data, please see our [Security Documentation](./landing-repo/security.html).
 
 ---
 

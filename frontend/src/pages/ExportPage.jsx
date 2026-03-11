@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import Logo from '../components/Logo';
 import BackButton from '../components/BackButton';
 import LiquidGlassPopup from '../components/LiquidGlassPopup';
+import Sidebar from '../components/Sidebar';
 
 export default function ExportPage() {
     const location = useLocation();
@@ -27,7 +28,20 @@ export default function ExportPage() {
                 if (!selectedSession) {
                     if (userId) {
                         const result = await window.electronAPI.getSessions(userId);
-                        if (result.success) setSessions(result.sessions);
+                        let dbSessions = [];
+                        if (result.success) {
+                            dbSessions = result.sessions;
+                        }
+
+                        // Merge fallback sessions for offline support
+                        const fallbackKey = `fallbackSessions_${userId}`;
+                        const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+                        const mergedSessions = [...dbSessions];
+                        for (const fs of fallback) {
+                            if (!mergedSessions.find(s => s.id === fs.id)) mergedSessions.push(fs);
+                        }
+                        
+                        setSessions(mergedSessions);
                     } else {
                         // Guest sessions
                         const localSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
@@ -76,26 +90,18 @@ export default function ExportPage() {
     };
 
     return (
-        <div className="bg-background-light dark:bg-background-dark font-display text-white min-h-screen flex flex-col overflow-x-hidden">
-            <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-surface-border px-6 lg:px-10 py-4 bg-background-dark">
-                <div className="flex items-center gap-4">
-                    <BackButton />
-                    <Logo />
-                </div>
-                <div className="flex items-center gap-4 lg:gap-8">
-                    <div className="hidden md:flex items-center gap-9">
-                        <Link to="/dashboard" className="text-text-muted hover:text-white text-sm font-medium leading-normal transition-colors">Dashboard</Link>
-                        {selectedSession && (
-                            <button onClick={() => setSelectedSession(null)} className="text-text-muted hover:text-white text-sm font-medium leading-normal transition-colors">Change Session</button>
-                        )}
-                    </div>
-                    <div className="bg-primary/20 flex items-center justify-center rounded-full size-10 text-primary font-bold border border-primary/20">
-                        {getInitials(userName)}
+        <div className="flex h-screen w-full bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden">
+            <Sidebar active="/export" />
+            <main className="flex-1 flex flex-col h-full overflow-y-auto relative scroll-smooth custom-scrollbar">
+                {/* Mobile Header */}
+                <div className="md:hidden flex items-center justify-between p-4 border-b border-white/10 bg-background-dark sticky top-0 z-20">
+                    <div className="flex items-center gap-3">
+                        <BackButton />
+                        <Logo />
                     </div>
                 </div>
-            </header>
 
-            <div className="layout-container flex flex-col items-center flex-1 w-full px-4 md:px-10 lg:px-20 py-8">
+                <div className="layout-container flex flex-col items-center flex-1 w-full px-4 md:px-10 lg:px-20 py-8">
                 <div className="max-w-[1200px] w-full flex flex-col gap-6">
                     <div className="flex flex-col gap-2">
                         <h1 className="text-white text-3xl md:text-4xl font-black leading-tight tracking-[-0.033em]">Export Reports</h1>
@@ -240,6 +246,7 @@ export default function ExportPage() {
                 message={popup.message}
                 type={popup.type}
             />
+            </main>
         </div>
     );
 }

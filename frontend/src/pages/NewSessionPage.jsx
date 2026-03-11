@@ -3,7 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import Logo from '../components/Logo';
 import BackButton from '../components/BackButton';
 import GameSelector from '../components/GameSelector';
+import LoadingScreen from '../components/LoadingScreen';
 import { useToast } from '../context/ToastContext';
+import Sidebar from '../components/Sidebar';
 
 export default function NewSessionPage() {
 
@@ -202,12 +204,25 @@ export default function NewSessionPage() {
             };
 
             if (userId) {
-                const saveResult = await window.electronAPI.saveSession(sessionData);
-                if (saveResult.success) {
-                    sessionData.id = saveResult.sessionId;
-                    console.log('✅ Session saved to history');
-                } else {
-                    console.error('❌ Failed to update history:', saveResult.error);
+                try {
+                    const saveResult = await window.electronAPI.saveSession(sessionData);
+                    if (saveResult.success) {
+                        sessionData.id = saveResult.sessionId;
+                        console.log('✅ Session saved to database history');
+                    } else {
+                        // DB save failed — fall back to localStorage so nothing is lost
+                        console.error('❌ DB save failed:', saveResult.error);
+                        showToast('⚠️ Could not reach database — session saved locally as fallback.', 'warning');
+                        const fallbackKey = `fallbackSessions_${userId}`;
+                        const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+                        sessionData.id = `fallback_${Date.now()}`;
+                        fallback.unshift(sessionData);
+                        if (fallback.length > 20) fallback.pop();
+                        localStorage.setItem(fallbackKey, JSON.stringify(fallback));
+                    }
+                } catch (saveErr) {
+                    console.error('❌ Save session threw:', saveErr);
+                    showToast('⚠️ Database error — session saved locally.', 'warning');
                 }
             } else {
                 // GUEST: Save to Local Storage
@@ -395,35 +410,25 @@ export default function NewSessionPage() {
     };
 
     return (
-        <div className="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white transition-colors duration-200 min-h-screen flex flex-col overflow-x-hidden">
-            <header className="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-[#2c4823] px-6 lg:px-10 py-4 bg-background-light dark:bg-background-dark sticky top-0 z-50">
-                <div className="flex items-center gap-4">
-                    <BackButton />
-                    <Logo />
-                </div>
-                <div className="flex flex-1 justify-end gap-4 md:gap-8 items-center">
-                    <div className="hidden md:flex items-center gap-6 lg:gap-9">
-                        <Link to="/dashboard" className="text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white text-sm font-medium leading-normal transition-colors">Dashboard</Link>
-                    </div>
-                    <div className="bg-primary/20 flex items-center justify-center rounded-full size-10 text-primary font-bold border border-primary/20">
-                        {getInitials(userName)}
+        <div className="flex h-screen w-full bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden">
+            <Sidebar active="/new-session" />
+            <main className="flex-1 flex flex-col h-full overflow-y-auto relative scroll-smooth custom-scrollbar">
+                {/* Mobile Header */}
+                <div className="md:hidden flex items-center justify-between p-4 border-b border-white/10 bg-background-dark sticky top-0 z-20">
+                    <div className="flex items-center gap-3">
+                        <BackButton />
+                        <Logo />
                     </div>
                 </div>
-            </header>
-            <main className="layout-container flex h-full grow flex-col">
-                <div className="px-4 md:px-20 lg:px-40 flex flex-1 justify-center py-8">
-                    <div className="layout-content-container flex flex-col max-w-[960px] flex-1 gap-8">
-                        <div className="flex flex-col gap-2">
-                            <div className="flex flex-wrap items-center gap-2 px-4">
-                                <Link to="/dashboard" className="text-slate-500 dark:text-[#9fc992] text-sm font-medium leading-normal hover:underline">Dashboard</Link>
-                                <span className="text-slate-400 dark:text-[#9fc992]/50 text-sm font-medium leading-normal">/</span>
-                                <span className="text-slate-900 dark:text-white text-sm font-medium leading-normal">New Session</span>
-                            </div>
-                            <div className="px-4 py-2">
-                                <h1 className="text-slate-900 dark:text-white text-3xl md:text-4xl font-black leading-tight tracking-[-0.033em]">Start New Analysis</h1>
-                                <p className="text-slate-500 dark:text-[#9fc992] mt-2 text-base font-normal leading-normal">Upload your meeting recording or start capturing live audio for instant AI insights.</p>
-                            </div>
+
+                <div className="p-4 md:p-8 lg:p-12 flex flex-col max-w-5xl mx-auto w-full gap-8">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-primary text-[10px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">AI Workspace</span>
                         </div>
+                        <h1 className="text-white text-3xl md:text-5xl font-black leading-tight tracking-tight">Start New Analysis</h1>
+                        <p className="text-white/60 mt-2 text-sm md:text-base font-medium max-w-xl leading-relaxed">Upload a recording, paste a link, or capture live audio to extract intelligence instantly.</p>
+                    </div>
 
                         {isProcessing && (
                             <div className="px-4 py-4 flex flex-col gap-4">
@@ -528,7 +533,6 @@ export default function NewSessionPage() {
                             </div>
                         </div>
                     </div>
-                </div>
 
                 {/* Floating Play Game Button - Shows during processing */}
                 {isProcessing && !showGame && (

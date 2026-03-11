@@ -1,9 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Logo from '../components/Logo';
 
 export default function HomePage() {
     const navigate = useNavigate();
+    const [authChecking, setAuthChecking] = useState(true);
 
     useEffect(() => {
         const checkSession = async () => {
@@ -11,11 +12,24 @@ export default function HomePage() {
                 const userId = await window.electronAPI.getActiveId();
                 if (userId) {
                     navigate('/dashboard', { replace: true });
+                    return;
                 }
             }
+            setAuthChecking(false);
         };
         checkSession();
     }, [navigate]);
+
+    // Don't flash the landing page while checking — show a minimal splash
+    if (authChecking) {
+        return (
+            <div className="flex min-h-screen w-full items-center justify-center bg-background-dark">
+                <div className="flex flex-col items-center gap-4 animate-pulse">
+                    <Logo />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="relative flex min-h-screen w-full flex-col group/design-root overflow-y-auto">

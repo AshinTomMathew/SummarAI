@@ -24,7 +24,7 @@ import crypto from 'crypto';
 // Define __dirname and __filename for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PYTHON_API_BASE = 'http://127.0.0.1:1001';
+let PYTHON_API_BASE = 'https://summarai-18nu.onrender.com'; // Default live URL
 
 console.log('🔵 main.js: Starting Electron...');
 
@@ -52,6 +52,14 @@ if (isDev) {
 
 console.log('🔵 Loading .env from:', envPath);
 dotenv.config({ path: envPath });
+// In dev mode: ALWAYS use local backend (127.0.0.1:1001), never the cloud URL.
+// In production (packaged): use VITE_API_BASE_URL from .env (the Render cloud URL).
+if (isDev) {
+    PYTHON_API_BASE = 'http://127.0.0.1:1001';
+} else {
+    PYTHON_API_BASE = process.env.VITE_API_BASE_URL || PYTHON_API_BASE;
+}
+console.log('🌐 Using AI Backend at:', PYTHON_API_BASE);
 
 console.log('🔵 NODE_ENV (assumed):', isDev ? 'development' : 'production');
 console.log('🔵 app.isPackaged:', app.isPackaged);
@@ -150,9 +158,31 @@ async function checkBackendHealth(retries = 60, interval = 1000) {
 
 // Helper to spawn Python Backend
 let backendSpawned = false; // Strict guard to prevent double-spawn
-
 let respawnAttempts = 0;
-const MAX_RESPAWNS = 999; // Essentially infinite for a watchdog behavior
+const MAX_RESPAWNS = 999;
+
+// ── Keepalive monitor: pings health every 15s and self-heals ──────────────────
+let keepaliveTimer = null;
+function startBackendKeepalive() {
+    if (keepaliveTimer) return;
+    keepaliveTimer = setInterval(async () => {
+        try {
+            const res = await fetch(`${PYTHON_API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+            if (res.ok) {
+                const d = await res.json();
+                if (d.status === 'online') {
+                    if (!isBackendReady) console.log('💚 [KEEPALIVE] Backend recovered — marking ready.');
+                    isBackendReady = true;
+                    return;
+                }
+            }
+        } catch (_) {}
+        // Backend not responding
+        if (isBackendReady) console.log('🔴 [KEEPALIVE] Backend went offline — triggering respawn...');
+        isBackendReady = false;
+        if (!pyProcess && !isSpawning) spawnPythonBackend();
+    }, 15000);
+}
 
 async function spawnPythonBackend() {
     if (pyProcess) {
@@ -166,6 +196,7 @@ async function spawnPythonBackend() {
         console.log('✅ Backend found already active (possibly manual start). Monitoring only.');
         isBackendReady = true;
         backendSpawned = true;
+        startBackendKeepalive();
         return;
     }
 
@@ -218,24 +249,30 @@ async function spawnPythonBackend() {
         pyProcess.on('exit', (code) => {
             console.log(`⚠️ Watchdog: Backend exited with code ${code}`);
             pyProcess = null;
-            isBackendReady = false;
             isSpawning = false;
             backendSpawned = false;
 
-            // AUTO-RESTART LOOP (WATCHDOG MODE)
-            // If it exit with non-zero (crash), restart. If it exits with 0 (clean), still restart if it was unexpected.
-            const delay = Math.min(respawnAttempts * 2000 + 1000, 10000); // Backoff up to 10s
-            respawnAttempts++;
-
-            console.log(`🔄 [WATCHDOG] Restarting backend in ${delay / 1000}s...`);
-            setTimeout(() => {
-                spawnPythonBackend();
-            }, delay);
+            // SMART EXIT: check if someone else restarted the backend before resetting flag
+            checkBackendHealth(2, 500).then(anotherRunning => {
+                if (anotherRunning) {
+                    console.log('✅ [WATCHDOG] Another backend instance detected. Skipping respawn.');
+                    isBackendReady = true;
+                    return;
+                }
+                // Genuinely gone — reset and respawn with backoff
+                isBackendReady = false;
+                const delay = Math.min(respawnAttempts * 2000 + 1000, 10000);
+                respawnAttempts++;
+                console.log(`🔄 [WATCHDOG] Restarting backend in ${delay / 1000}s...`);
+                setTimeout(() => spawnPythonBackend(), delay);
+            });
         });
 
         pyProcess.unref();
+        startBackendKeepalive();
 
         app.on('will-quit', () => {
+            if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
             if (pyProcess) {
                 console.log('🛑 Watchdog: Cleaning up backend...');
                 pyProcess.kill();
@@ -651,18 +688,37 @@ ipcMain.handle('hide-drawing-overlay', () => {
 });
 
 async function waitForBackendReady(maxWaitMs = 30000) {
-    if (isBackendReady) return true;
+    const healthUrl = `${PYTHON_API_BASE}/health`;
+
+    // Helper: try a single health ping
+    async function pingHealth() {
+        try {
+            const response = await fetch(healthUrl, { signal: AbortSignal.timeout(2000) });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === 'online') {
+                    isBackendReady = true;
+                    return true;
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    // Fast path: already marked ready OR backend is actually responding right now
+    if (isBackendReady || await pingHealth()) return true;
 
     console.log('⏳ Waiting for backend to become ready...');
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
-        if (isBackendReady) return true;
-        await new Promise(resolve => setTimeout(resolve, 500));
+        if (isBackendReady || await pingHealth()) return true;
+        await new Promise(resolve => setTimeout(resolve, 800));
     }
 
     throw new Error('Backend startup timed out.');
 }
+
 
 async function callPythonAPI(endpoint, data = {}, isFormData = true) {
     try {

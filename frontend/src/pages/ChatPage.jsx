@@ -61,12 +61,24 @@ export default function ChatPage() {
                         }
                     } else {
                         const result = await window.electronAPI.getSessions(userId);
+                        let dbSessions = [];
                         if (result.success) {
-                            setSessions(result.sessions);
-                            // If no session passed via state, pick the most recent one
-                            if (!currentSession && result.sessions.length > 0) {
-                                setCurrentSession(result.sessions[0]);
-                            }
+                            dbSessions = result.sessions;
+                        }
+                        
+                        // Merge fallback sessions for offline support
+                        const fallbackKey = `fallbackSessions_${userId}`;
+                        const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+                        const mergedSessions = [...dbSessions];
+                        for (const fs of fallback) {
+                            if (!mergedSessions.find(s => s.id === fs.id)) mergedSessions.push(fs);
+                        }
+                        
+                        setSessions(mergedSessions);
+                        
+                        // Pick the most recent one if no session passed via state
+                        if (!currentSession && mergedSessions.length > 0) {
+                            setCurrentSession(mergedSessions[0]);
                         }
                     }
                 } catch (err) {
@@ -88,9 +100,9 @@ export default function ChatPage() {
                 let initialMessages = [];
                 let msgCount = 0;
 
-                if (userIsGuest) {
-                    // GUEST: Load from Local Storage
-                    const localChat = JSON.parse(localStorage.getItem(`guestChat_${currentSession.id}`) || '[]');
+                if (userIsGuest || currentSession.id.toString().startsWith('fallback_')) {
+                    // GUEST or OFFLINE FALLBACK: Load from Local Storage
+                    const localChat = JSON.parse(localStorage.getItem(`localChat_${currentSession.id}`) || '[]');
                     initialMessages = localChat;
                     msgCount = localChat.filter(m => m.sender === 'user').length;
                 } else if (window.electronAPI && window.electronAPI.getChatHistory) {
@@ -140,9 +152,9 @@ export default function ChatPage() {
         scrollToBottom();
     }, [messages, isProcessing]);
 
-    const saveGuestChat = (newMessages) => {
-        if (userIsGuest && currentSession) {
-            localStorage.setItem(`guestChat_${currentSession.id}`, JSON.stringify(newMessages));
+    const saveLocalChat = (newMessages) => {
+        if ((userIsGuest || currentSession?.id?.toString().startsWith('fallback_')) && currentSession) {
+            localStorage.setItem(`localChat_${currentSession.id}`, JSON.stringify(newMessages));
         }
     };
 
@@ -172,7 +184,7 @@ export default function ChatPage() {
         // Optimistic Update & Persistence
         setMessages(prev => {
             const updated = [...prev, userMsg];
-            saveGuestChat(updated);
+            saveLocalChat(updated);
             return updated;
         });
 
@@ -197,7 +209,7 @@ export default function ChatPage() {
 
             setMessages(prev => {
                 const updated = [...prev, { sender: 'ai', text: aiMsgText }];
-                saveGuestChat(updated); // Persist AI response for Guest
+                saveLocalChat(updated); // Persist AI response for Guest and Offline
                 return updated;
             });
 
@@ -205,7 +217,7 @@ export default function ChatPage() {
             console.error("❌ [CHAT] Critical System Error:", e);
             setMessages(prev => {
                 const updated = [...prev, { sender: 'ai', text: "System Error: Unable to reach neural core." }];
-                saveGuestChat(updated);
+                saveLocalChat(updated);
                 return updated;
             });
         } finally {

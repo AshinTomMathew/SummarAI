@@ -20,17 +20,33 @@ export default function DashboardPage() {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
     };
 
+    const [dbOnline, setDbOnline] = useState(true);
+
     useEffect(() => {
         const fetchSessionsAndUser = async () => {
             if (window.electronAPI) {
                 const userId = await window.electronAPI.getActiveId();
 
                 if (userId) {
-                    // Registered user: Fetch from database
+                    // Try DB first
                     const result = await window.electronAPI.getSessions(userId);
+                    let dbSessions = [];
                     if (result.success) {
-                        setSessions(result.sessions);
+                        dbSessions = result.sessions;
+                        setDbOnline(true);
+                    } else {
+                        setDbOnline(false);
                     }
+
+                    // Add offline fallback sessions to the list!
+            const fallbackKey = userId ? `fallbackSessions_${userId}` : 'guestSessions';
+            const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+            const merged = [...dbSessions]; // Changed from [...sessions] to [...dbSessions] for logical consistency
+                    for (const fs of fallback) {
+                        if (!merged.find(s => s.id === fs.id)) merged.push(fs);
+                    }
+                    setSessions(merged);
+
                     const userResult = await window.electronAPI.getUser(userId);
                     if (userResult.success) {
                         setUserName(userResult.user.name);
@@ -63,21 +79,31 @@ export default function DashboardPage() {
     const confirmDelete = async () => {
         if (!sessionToDelete) return;
 
-        if (window.electronAPI) {
-            const userId = await window.electronAPI.getActiveId();
-            if (userId) {
-                const result = await window.electronAPI.deleteSession(sessionToDelete.id);
-                if (result.success) {
-                    setSessions(prev => prev.filter(s => s.id !== sessionToDelete.id));
-                }
-            } else {
-                // Guest delete fallback (shouldn't really hit here due to redirect, but safe)
-                const guestSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
-                const updated = guestSessions.filter(s => s.id !== sessionToDelete.id);
-                localStorage.setItem('guestSessions', JSON.stringify(updated));
-                setSessions(updated);
+        try {
+            // Assume it works optimistically
+            setSessions(prev => prev.filter(s => s.id !== sessionToDelete.id));
+
+            // Remote DB delete
+            if (window.electronAPI && !sessionToDelete.id.toString().startsWith('fallback_') && !sessionToDelete.id.toString().startsWith('guest_')) {
+                await window.electronAPI.deleteSession(sessionToDelete.id);
             }
+
+            // Local fallback delete
+            if (sessionToDelete.id.toString().startsWith('fallback_')) {
+                const userId = await window.electronAPI.getActiveId();
+                const fallbackKey = `fallbackSessions_${userId}`;
+                let fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+                fallback = fallback.filter(s => s.id !== sessionToDelete.id);
+                localStorage.setItem(fallbackKey, JSON.stringify(fallback));
+            } else if (sessionToDelete.id.toString().startsWith('guest_')) {
+                let guestSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
+                guestSessions = guestSessions.filter(s => s.id !== sessionToDelete.id);
+                localStorage.setItem('guestSessions', JSON.stringify(guestSessions));
+            }
+        } catch (e) {
+            console.error("Delete error", e);
         }
+        
         setSessionToDelete(null);
     };
 
@@ -97,7 +123,15 @@ export default function DashboardPage() {
                 <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 flex flex-col gap-8">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div className="flex flex-col gap-2">
-                            <h2 className="text-white text-3xl md:text-4xl font-black leading-tight tracking-tight">Good Morning, {userName}</h2>
+                            <h2 className="text-white text-3xl md:text-4xl font-black leading-tight tracking-tight">
+                                {(() => {
+                                    const hour = new Date().getHours();
+                                    if (hour < 12) return 'Good Morning, ';
+                                    if (hour < 17) return 'Good Afternoon, ';
+                                    return 'Good Evening, ';
+                                })()}
+                                {userName}
+                            </h2>
                             <p className="text-white/60 text-base font-normal">
                                 {userName === 'Guest' && (
                                     <span className="bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full text-xs font-bold uppercase mr-2 tracking-wider">Guest Mode</span>
@@ -123,6 +157,15 @@ export default function DashboardPage() {
                             </div>
                         </div>
                     </div>
+
+                    {!dbOnline && userName !== 'Guest' && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 p-4 rounded-xl flex items-start md:items-center gap-3">
+                            <span className="material-symbols-outlined shrink-0 mt-0.5 md:mt-0">cloud_off</span>
+                            <div className="flex-1 text-sm">
+                                <strong className="font-bold">Database Unreachable:</strong> We couldn't connect to the cloud database. Your recent sessions are temporarily saved locally and will remain here until the connection is restored.
+                            </div>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="flex flex-col gap-2 rounded-2xl p-6 bg-surface-dark border border-white/5 hover:border-primary/30 transition-colors group">
@@ -254,10 +297,16 @@ export default function DashboardPage() {
                                             <div className="w-full sm:w-32 aspect-video sm:aspect-square rounded-xl bg-cover bg-center shrink-0 relative overflow-hidden bg-white/5 flex items-center justify-center">
                                                 {session.visuals && session.visuals.length > 0 ? (
                                                     <img
-                                                        src={`media://local?path=${encodeURIComponent(session.visuals[0].path)}`}
+                                                        src={
+                                                            // Cloudinary URL (starts with https) → use directly
+                                                            // Local path → use media:// protocol
+                                                            (session.visuals[0].url || session.visuals[0].path || '').startsWith('https')
+                                                                ? (session.visuals[0].url || session.visuals[0].path)
+                                                                : `media://local?path=${encodeURIComponent(session.visuals[0].path || session.visuals[0].url || '')}`
+                                                        }
                                                         className="w-full h-full object-cover"
                                                         alt="Meeting Preview"
-                                                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                        onError={(e) => { e.target.style.display = 'none'; }}
                                                     />
                                                 ) : null}
                                                 <div className="absolute inset-0 flex items-center justify-center bg-black/40">

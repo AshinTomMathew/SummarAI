@@ -1,7 +1,5 @@
-# Use Python 3.10 slim for smaller image size
 FROM python:3.10-slim
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 ENV RENDER 1
@@ -15,19 +13,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Set work directory
 WORKDIR /app
 
-# Install Python dependencies
+# Step 1: Install Torch (CPU version only) to save space and memory
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Step 2: Install the rest of the requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
 COPY . .
 
-# Expose the port (Render will use $PORT, but we specify a default)
+# Use the dynamic PORT assigned by Render
 EXPOSE 1001
 
-# Command to run the application
-# We use uvicorn directly for production stability
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "1001"]
+# Start the app using main:app
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-1001}

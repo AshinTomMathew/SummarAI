@@ -2,7 +2,7 @@ fastapi
 uvicorn
 faster-whisper
 transformers
-torch
+# torch removed (handled in Dockerfile)
 ffmpeg-python
 pytesseract
 python-docx

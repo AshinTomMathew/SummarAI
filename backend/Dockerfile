@@ -5,7 +5,6 @@ ENV PYTHONUNBUFFERED 1
 ENV RENDER 1
 
 # Install system dependencies
-# We removed libgl1-mesa-glx because we are using opencv-python-headless
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     tesseract-ocr \
@@ -14,10 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Step 1: Install Torch (CPU version only)
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
-# Step 2: Install remaining requirements
+# Cloud build: Skip Torch/Transformers for faster deployment
+# We rely on Groq/Gemini APIs in the cloud
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

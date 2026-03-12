@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-faster-whisper
-transformers
+# faster-whisper removed for cloud-light build
+# transformers removed for cloud-light build
 # torch removed (handled in Dockerfile)
 ffmpeg-python
 pytesseract

@@ -15,8 +15,8 @@ yt-dlp
 numpy
 pillow
 opencv-python-headless
+psycopg2-binary
+pymysql
 groq
 google-generativeai
-pymysql
-psycopg2-binary
 psutil

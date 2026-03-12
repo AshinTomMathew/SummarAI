@@ -11,9 +11,11 @@ dotenv_path = project_root / ".env"
 load_dotenv(dotenv_path=dotenv_path)
 
 # Get database type from environment: 'mysql' or 'postgres'
-DB_TYPE = os.getenv("DB_TYPE", "mysql").lower()
+# AUTO-SWITCH: If on Render, default to 'postgres'
+is_render = os.getenv("RENDER") == "true"
+DB_TYPE = os.getenv("DB_TYPE", "postgres" if is_render else "mysql").lower()
 
-if DB_TYPE in ["postgres", "postgresql"]:
+if DB_TYPE in ["postgres", "postgresql", "psql"]:
     # PostgreSQL / Supabase Configuration
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL:

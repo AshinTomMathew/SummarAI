@@ -23,6 +23,32 @@ const webAPI = {
             return await resp.json();
         } catch (e) { return { success: false, error: e.message }; }
     },
+    login: async (credentials) => {
+        try {
+            const resp = await fetch(`${BACKEND_URL}/db/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(credentials)
+            });
+            const result = await resp.json();
+            if (result.success) localStorage.setItem('web_user_id', result.user.id);
+            return result;
+        } catch (e) { return { success: false, error: e.message }; }
+    },
+    register: async (userData) => {
+        try {
+            const resp = await fetch(`${BACKEND_URL}/db/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            });
+            return await resp.json();
+        } catch (e) { return { success: false, error: e.message }; }
+    },
+    logout: async () => {
+        localStorage.removeItem('web_user_id');
+        return { success: true };
+    },
     // Add other methods as needed or a generic invoker
     invoke: async (channel, ...args) => {
         console.log(`Web Proxy: calling ${channel}`, args);

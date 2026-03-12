@@ -14,6 +14,7 @@ export default function DashboardPage() {
     const [sortBy, setSortBy] = useState('newest');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [sessionToDelete, setSessionToDelete] = useState(null);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
 
     const getInitials = (name) => {
         if (!name || name === 'Guest') return 'G';
@@ -28,7 +29,7 @@ export default function DashboardPage() {
                 const userId = await window.electronAPI.getActiveId();
 
                 if (userId) {
-                    // Try DB first
+                    // Logged in User Flow
                     const result = await window.electronAPI.getSessions(userId);
                     let dbSessions = [];
                     if (result.success) {
@@ -38,10 +39,10 @@ export default function DashboardPage() {
                         setDbOnline(false);
                     }
 
-                    // Add offline fallback sessions to the list!
-            const fallbackKey = userId ? `fallbackSessions_${userId}` : 'guestSessions';
-            const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
-            const merged = [...dbSessions]; // Changed from [...sessions] to [...dbSessions] for logical consistency
+                    // Add offline fallback sessions
+                    const fallbackKey = `fallbackSessions_${userId}`;
+                    const fallback = JSON.parse(localStorage.getItem(fallbackKey) || '[]');
+                    const merged = [...dbSessions];
                     for (const fs of fallback) {
                         if (!merged.find(s => s.id === fs.id)) merged.push(fs);
                     }
@@ -51,11 +52,13 @@ export default function DashboardPage() {
                     if (userResult.success) {
                         setUserName(userResult.user.name);
                     }
-                    setLoading(false);
                 } else {
-                    // Redirect to Guest Dashboard
-                    navigate('/guest');
+                    // Guest Flow
+                    setUserName('Guest');
+                    const guestSessions = JSON.parse(localStorage.getItem('guestSessions') || '[]');
+                    setSessions(guestSessions);
                 }
+                setLoading(false);
             } else {
                 setLoading(false);
             }
@@ -105,6 +108,12 @@ export default function DashboardPage() {
         }
         
         setSessionToDelete(null);
+    };
+
+    const handleClearAll = () => {
+        localStorage.removeItem('guestSessions');
+        setSessions([]);
+        setShowClearConfirm(false);
     };
 
     return (
@@ -167,6 +176,25 @@ export default function DashboardPage() {
                         </div>
                     )}
 
+                    {userName === 'Guest' && (
+                        <div className="rounded-xl border border-orange-500/30 bg-gradient-to-r from-orange-900/20 to-background-dark p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex gap-4">
+                                <div className="hidden sm:flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-500">
+                                    <span className="material-symbols-outlined">warning</span>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <p className="text-white text-base font-bold leading-tight">Temporary Guest Session Active</p>
+                                    <p className="text-white/70 text-sm font-normal leading-normal max-w-xl">
+                                        You are limited to 5 recent sessions. All data will be deleted when you clear your browser cache.
+                                    </p>
+                                </div>
+                            </div>
+                            <Link to="/register" className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full text-sm font-bold transition-all shadow-lg shadow-orange-500/20 shrink-0">
+                                Create Account to Save
+                            </Link>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="flex flex-col gap-2 rounded-2xl p-6 bg-surface-dark border border-white/5 hover:border-primary/30 transition-colors group">
                             <div className="flex items-center justify-between">
@@ -205,7 +233,14 @@ export default function DashboardPage() {
 
                     <div className="flex flex-col gap-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <h3 className="text-white text-xl font-bold">Recent Sessions</h3>
+                            <div className="flex items-center gap-4">
+                                <h3 className="text-white text-xl font-bold">Recent Sessions</h3>
+                                {userName === 'Guest' && sessions.length > 0 && (
+                                    <button onClick={() => setShowClearConfirm(true)} className="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1 border border-red-400/20 px-3 py-1 rounded-full bg-red-400/5">
+                                        <span className="material-symbols-outlined text-[14px]">delete_sweep</span> Clear All
+                                    </button>
+                                )}
+                            </div>
 
                             <div className="flex flex-wrap items-center gap-3">
                                 {/* Search Bar (Liquid Glass Style) */}
@@ -352,6 +387,14 @@ export default function DashboardPage() {
                     message={sessionToDelete ? `Are you sure you want to delete "${sessionToDelete.title}"? This cannot be undone.` : ''}
                     onConfirm={confirmDelete}
                     onCancel={() => setSessionToDelete(null)}
+                />
+
+                <ConfirmModal
+                    isOpen={showClearConfirm}
+                    title="Clear All Sessions"
+                    message="Are you sure you want to completely clear your temporary guest history? You will lose access to all these analyses."
+                    onConfirm={handleClearAll}
+                    onCancel={() => setShowClearConfirm(false)}
                 />
             </main>
         </div>

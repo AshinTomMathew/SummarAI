@@ -9,7 +9,6 @@ import TranscriptPage from './pages/TranscriptPage';
 import ChatPage from './pages/ChatPage';
 import ExportPage from './pages/ExportPage';
 import ProfilePage from './pages/ProfilePage';
-import GuestModePage from './pages/GuestModePage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ToolbarPage from './pages/ToolbarPage';
 import DrawingPage from './pages/DrawingPage';
@@ -29,7 +28,7 @@ function App() {
                     <Route path="/chat" element={<ChatPage />} />
                     <Route path="/export" element={<ExportPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
-                    <Route path="/guest" element={<GuestModePage />} />
+                    <Route path="/guest" element={<DashboardPage />} />
                     <Route path="/toolbar" element={<ToolbarPage />} />
                     <Route path="/drawing" element={<DrawingPage />} />
                 </Routes>

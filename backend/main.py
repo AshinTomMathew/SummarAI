@@ -20,7 +20,10 @@ import psutil
 import socket
 
 def kill_existing_process_on_port(port):
-    """Kills any process currently listening on the specified port."""
+    """Kills any process currently listening on the specified port. Disabled on Render."""
+    if os.environ.get("RENDER"):
+        return False
+        
     for proc in psutil.process_iter(['pid', 'name']):
         try:
             for conn in proc.connections(kind='inet'):
@@ -153,7 +156,7 @@ async def api_normalize(path: str = Form(...)):
         if os.path.exists(temp_wav):
             os.remove(temp_wav)
             
-        duration = get_duration(final_mp3)
+        duration = round(get_duration(final_mp3))
         print(f"✅ Normalized & Compressed: {final_mp3}, duration: {duration}")
         return {"success": True, "path": final_mp3, "duration": duration, "originalPath": path}
     except Exception as e:
@@ -241,7 +244,7 @@ async def api_process_link(url: str = Form(...)):
                     return {"success": False, "error": "Audio stream captured but could not be verified locally."}
 
                 print(f"✅ Neural Source Ready: {final_path}")
-                return {"success": True, "path": final_path, "title": title, "duration": duration}
+                return {"success": True, "path": final_path, "title": title, "duration": round(duration)}
                 
         except Exception as e:
             import sys
@@ -261,8 +264,12 @@ async def api_process_link(url: str = Form(...)):
 @app.post("/audio/transcribe")
 async def api_transcribe(path: str = Form(...)):
     try:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
             
         text = transcribe(path)
         return {"success": True, "text": text}
@@ -415,9 +422,15 @@ def test_db():
     return {"database_data": data}
 
 if __name__ == "__main__":
-    PORT = 1001
-    if is_port_in_use(PORT):
+    import os
+    # Priority: Env PORT -> 1001
+    PORT = int(os.environ.get("PORT", 1001))
+    
+    # Only kill process if on local dev (not Render/Cloud)
+    if not os.environ.get("RENDER") and is_port_in_use(PORT):
         kill_existing_process_on_port(PORT)
-    print(f"Main Entry Point: Starting Uvicorn on port {PORT}...")
-    # workers=1 and reload=False are CRITICAL for Electron integration
-    uvicorn.run(app, host="127.0.0.1", port=PORT, reload=False, workers=1)
+        
+    print(f"Main Entry Point: Starting Uvicorn on {PORT}...")
+    # host must be 0.0.0.0 for Render to route traffic
+    host = "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"
+    uvicorn.run(app, host=host, port=PORT, reload=False, workers=1)

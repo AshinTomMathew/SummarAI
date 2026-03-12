@@ -22,7 +22,7 @@ export default function Sidebar({ active }) {
         return () => clearInterval(interval);
     }, []);
 
-    const isActive = (path) => location.pathname === path;
+    const isActive = (path) => active === path || location.pathname === path;
     const getLinkClass = (path) => `flex items-center gap-3 px-4 py-3 rounded-full transition-colors group ${isActive(path) ? 'bg-primary/20 text-primary' : 'text-white/70 hover:bg-white/5 hover:text-white'}`;
     const getIconClass = (path) => `material-symbols-outlined ${isActive(path) ? 'filled' : ''} group-hover:scale-110 transition-transform`;
 

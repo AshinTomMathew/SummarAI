@@ -1012,7 +1012,7 @@ ipcMain.handle('db-save-session', async (event, sessionData) => {
                 userId || null,
                 title || 'Untitled Session',
                 formattedDate,
-                duration || 0,
+                Math.round(duration || 0),
                 transcript || '',
                 summary || '',
                 classification || 'General',

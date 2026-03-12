@@ -58,7 +58,7 @@ export default function HomePage() {
                                         </h2>
                                     </div>
                                     <div className="flex flex-wrap gap-4 pt-2">
-                                        <Link to="/guest">
+                                        <Link to="/dashboard">
                                             <button className="flex min-w-[140px] cursor-pointer items-center justify-center rounded-full h-12 px-6 bg-primary text-[#152211] text-base font-bold shadow-[0_0_20px_rgba(70,236,19,0.3)] hover:shadow-[0_0_30px_rgba(70,236,19,0.5)] transition-all hover:scale-105">
                                                 <span className="truncate">Start as Guest</span>
                                             </button>

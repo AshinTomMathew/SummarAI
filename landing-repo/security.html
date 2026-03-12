@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security & Permissions | SummarAI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .container {
+            max-width: 800px;
+            margin: 100px auto;
+            padding: 40px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 2rem;
+        }
+
+        h1 {
+            color: var(--primary);
+            margin-bottom: 2rem;
+        }
+
+        h2 {
+            margin-top: 2rem;
+            color: var(--text-main);
+        }
+
+        p,
+        li {
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+        }
+
+        .back {
+            display: inline-block;
+            margin-bottom: 2rem;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 700;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="blob-container">
+        <div class="blob blob-1"></div>
+    </div>
+    <div class="container">
+        <a href="index.html" class="back">← Back to Home</a>
+        <h1>Security & Permissions</h1>
+
+        <h2>Overview</h2>
+        <p>SummarAI is designed with a "Privacy First" architecture. We understand that your meeting data is sensitive,
+            and we have implemented strict controls to ensure your information remains secure.</p>
+
+        <h2>Hardware Permissions</h2>
+
+        <h3>🎤 Microphone Access</h3>
+        <p><strong>Why?</strong> To record live meetings directly from your system.</p>
+        <p><strong>Privacy:</strong> Audio is captured only when you explicitly click "Start Recording." Raw audio is
+            streamed to our secure cloud processing pipeline.</p>
+
+        <h3>🖥️ Screen/Window Capture</h3>
+        <p><strong>Why?</strong> To extract visual slides, whiteboard notes, and shared content during video meetings.
+        </p>
+        <p><strong>Privacy:</strong> The app takes periodic screenshots ONLY during active meeting sessions. Visual data
+            is processed for OCR and discarded.</p>
+
+        <h2>Data Processing</h2>
+        <ul>
+            <li><strong>Cloud Processing:</strong> All data is encrypted during transit to our secure backend.</li>
+            <li><strong>Storage:</strong> Session history is stored in an encrypted database.</li>
+            <li><strong>No Model Training:</strong> We DO NOT use your data to train our AI models.</li>
+        </ul>
+
+        <h2>Contact</h2>
+        <p>For questions, contact <a href="mailto:security@summarai.io"
+                style="color: var(--primary);">security@summarai.io</a></p>
+    </div>
+</body>
+
+</html>

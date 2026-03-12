@@ -3,7 +3,6 @@ import { useState, useRef, useEffect } from 'react';
 import Logo from '../components/Logo';
 import BackButton from '../components/BackButton';
 import GameSelector from '../components/GameSelector';
-import LoadingScreen from '../components/LoadingScreen';
 import { useToast } from '../context/ToastContext';
 import Sidebar from '../components/Sidebar';
 
@@ -193,7 +192,7 @@ export default function NewSessionPage() {
                 userId: userId,
                 title: fileName.replace(/\.[^/.]+$/, "") || "New Meeting",
                 date: new Date().toISOString(),
-                duration: processed.duration || 0,
+                duration: Math.round(processed.duration || 0),
                 transcript: transcript,
                 summary: summary,
                 classification: category,

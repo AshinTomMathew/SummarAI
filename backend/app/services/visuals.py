@@ -1,6 +1,4 @@
 import os
-import cv2
-import numpy as np
 import pytesseract
 from PIL import Image
 from pathlib import Path
@@ -47,6 +45,8 @@ def get_frame_difference(frame1, frame2):
     Calculates the difference between two frames using Mean Squared Error (MSE)
     on grayscale resized versions. Returns a score (higher = more different).
     """
+    import cv2
+    import numpy as np
     try:
         # Convert to grayscale
         gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)

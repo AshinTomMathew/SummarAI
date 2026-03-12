@@ -402,7 +402,8 @@ async def export_report(
                 if visuals_data:
                     f.write(f"Visual Insights ({len(visuals_data)} slides):\n")
                     for v in visuals_data:
-                        f.write(f"- [{v.get('timestamp')}] {v.get('text', '').replace('\n', ' ')}\n")
+                        v_text = v.get('text', '').replace('\n', ' ')
+                        f.write(f"- [{v.get('timestamp')}] {v_text}\n")
                     f.write("\n")
                 f.write(f"Transcript:\n{transcript}\n")
         else:

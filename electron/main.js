@@ -190,6 +190,13 @@ async function spawnPythonBackend() {
         return;
     }
 
+    // NEW: If we are pointing to a cloud URL in production, don't spawn a local backend!
+    if (!isDev && PYTHON_API_BASE.includes('onrender.com')) {
+        console.log('🌐 App is in Cloud Mode. Skipping local backend spawn.');
+        isBackendReady = true;
+        return;
+    }
+
     // Check health before spawning to avoid port conflicts
     const isRunning = await checkBackendHealth(1, 100);
     if (isRunning) {
@@ -750,6 +757,33 @@ async function callPythonAPI(endpoint, data = {}, isFormData = true) {
     }
 }
 
+async function callPythonUpload(filePath) {
+    try {
+        const url = `${PYTHON_API_BASE}/audio/upload`;
+        console.log(`🌐 Uploading file to Cloud: ${url}`);
+        
+        const buffer = fs.readFileSync(filePath);
+        const formData = new FormData();
+        // Create a blob from the buffer for the fetch API
+        const blob = new Blob([buffer], { type: 'audio/mpeg' });
+        formData.append('file', blob, path.basename(filePath));
+
+        const response = await fetch(url, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`Upload failed: ${response.status} - ${text}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('❌ Cloud Upload Error:', error);
+        return { success: false, error: `Cloud Upload Error: ${error.message}` };
+    }
+}
+
 ipcMain.handle('upload-file', async (event, filePath) => {
     console.log('🔵 IPC: [BRIDGE] upload-file');
     try {
@@ -759,8 +793,16 @@ ipcMain.handle('upload-file', async (event, filePath) => {
 
         if (!validPath) return { success: false, error: 'Invalid file path.' };
 
-        // Call Python for normalization & duration
-        return await callPythonAPI('/audio/normalize', { path: validPath });
+        // 1. Process locally first (Normalize/Extract)
+        const processResult = await processAudio(validPath);
+        if (!processResult.success) return processResult;
+
+        // 2. Decide: Cloud Upload vs Local Path
+        if (PYTHON_API_BASE.includes('onrender.com')) {
+            return await callPythonUpload(processResult.path);
+        } else {
+            return await callPythonAPI('/audio/normalize', { path: processResult.path });
+        }
     } catch (error) {
         return { success: false, error: error.message };
     }

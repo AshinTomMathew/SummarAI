@@ -136,6 +136,27 @@ MEDIA_DIR.mkdir(exist_ok=True)
 async def health_check():
     return {"status": "online", "timestamp": datetime.now().isoformat()}
 
+@app.post("/audio/upload")
+async def api_upload_audio(file: UploadFile = File(...)):
+    print(f"📥 API: /audio/upload - filename: {file.filename}")
+    try:
+        # Create a unique subfolder for this session
+        session_id = str(uuid.uuid4())
+        session_folder = MEDIA_DIR / session_id
+        session_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Save the uploaded file
+        final_mp3 = str(session_folder / "processed.mp3")
+        with open(final_mp3, "wb") as f:
+            f.write(await file.read())
+            
+        duration = round(get_duration(final_mp3))
+        print(f"✅ Uploaded & Saved: {final_mp3}, duration: {duration}")
+        return {"success": True, "path": final_mp3, "duration": duration}
+    except Exception as e:
+        print(f"❌ Upload Error: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.post("/audio/normalize")
 async def api_normalize(path: str = Form(...)):
     print(f"📥 API: /audio/normalize - path: {path}")

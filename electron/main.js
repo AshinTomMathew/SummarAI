@@ -59,6 +59,8 @@ if (isDev) {
 } else {
     PYTHON_API_BASE = process.env.VITE_API_BASE_URL || PYTHON_API_BASE;
 }
+// Clean URL: Remove trailing slash if exists
+PYTHON_API_BASE = PYTHON_API_BASE.replace(/\/$/, "");
 console.log('🌐 Using AI Backend at:', PYTHON_API_BASE);
 
 console.log('🔵 NODE_ENV (assumed):', isDev ? 'development' : 'production');

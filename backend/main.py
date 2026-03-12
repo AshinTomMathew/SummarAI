@@ -132,6 +132,14 @@ MEDIA_DIR = Path(tempfile.gettempdir()) / "SummarAI"
 UPLOAD_DIR = MEDIA_DIR # For exported reports etc
 MEDIA_DIR.mkdir(exist_ok=True)
 
+@app.get("/")
+async def root():
+    return {
+        "message": "SummarAI AI Backend is ONLINE",
+        "version": "1.1.0 (Cloud-Light)",
+        "endpoints": ["/health", "/audio/upload", "/chat/query"]
+    }
+
 @app.get("/health")
 async def health_check():
     return {"status": "online", "timestamp": datetime.now().isoformat()}

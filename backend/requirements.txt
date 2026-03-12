@@ -14,7 +14,7 @@ python-multipart
 yt-dlp
 numpy
 pillow
-opencv-python
+opencv-python-headless
 groq
 google-generativeai
 pymysql

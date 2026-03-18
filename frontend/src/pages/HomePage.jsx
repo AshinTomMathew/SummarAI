@@ -58,16 +58,31 @@ export default function HomePage() {
                                         </h2>
                                     </div>
                                     <div className="flex flex-wrap gap-4 pt-2">
-                                        <Link to="/dashboard">
-                                            <button className="flex min-w-[140px] cursor-pointer items-center justify-center rounded-full h-12 px-6 bg-primary text-[#152211] text-base font-bold shadow-[0_0_20px_rgba(70,236,19,0.3)] hover:shadow-[0_0_30px_rgba(70,236,19,0.5)] transition-all hover:scale-105">
-                                                <span className="truncate">Start as Guest</span>
-                                            </button>
-                                        </Link>
-                                        <Link to="/login">
-                                            <button className="flex min-w-[140px] cursor-pointer items-center justify-center rounded-full h-12 px-6 border-2 border-solid border-gray-300 dark:border-[#3f6732] bg-transparent text-[#152211] dark:text-white text-base font-bold hover:bg-gray-100 dark:hover:bg-[#1f3319] transition-all">
-                                                <span className="truncate">Login / Sign Up</span>
-                                            </button>
-                                        </Link>
+                                        {!window.electronAPI ? (
+                                            <>
+                                                <a 
+                                                    href="https://github.com/AshinTomMathew/meeting-ai-app/releases/download/v1.0.0/MeetingAI.Setup.1.0.0.exe" 
+                                                    className="flex min-w-[180px] cursor-pointer items-center justify-center rounded-full h-12 px-8 bg-primary text-[#152211] text-base font-bold shadow-[0_0_20px_rgba(70,236,19,0.3)] hover:shadow-[0_0_30px_rgba(70,236,19,0.5)] transition-all hover:scale-105 gap-2"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                                                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                                        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                                    </svg>
+                                                    <span>Download Windows App</span>
+                                                </a>
+                                                <Link to="/dashboard">
+                                                    <button className="flex min-w-[140px] cursor-pointer items-center justify-center rounded-full h-12 px-6 border-2 border-solid border-gray-300 dark:border-[#3f6732] bg-transparent text-[#152211] dark:text-white text-base font-bold hover:bg-gray-100 dark:hover:bg-[#1f3319] transition-all">
+                                                        <span>Try Web Demo</span>
+                                                    </button>
+                                                </Link>
+                                            </>
+                                        ) : (
+                                            <Link to="/dashboard">
+                                                <button className="flex min-w-[180px] cursor-pointer items-center justify-center rounded-full h-12 px-8 bg-primary text-[#152211] text-base font-bold shadow-[0_0_20px_rgba(70,236,19,0.3)] hover:shadow-[0_0_30px_rgba(70,236,19,0.5)] transition-all hover:scale-105">
+                                                    <span>Open Dashboard</span>
+                                                </button>
+                                            </Link>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="w-full lg:w-1/2">
